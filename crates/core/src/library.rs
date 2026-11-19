@@ -69,6 +69,26 @@ impl Library {
         format!("$Yarn.Internal.Visiting.{node_name}")
     }
 
+    /// Generates the name of the variable that tracks whether a piece of `once` content
+    /// (a line, option, line group item or node group member) was already seen.
+    /// `content_id` is the line ID of the content (without leading `#`), or the node title for nodes.
+    /// Set this variable to `false` in the variable storage to make the content available again.
+    pub fn generate_unique_content_viewed_variable_name(content_id: &str) -> String {
+        format!("$Yarn.Internal.Once.{content_id}")
+    }
+
+    /// Generates the name of the variable that tracks whether a `<<once>>` block was already run.
+    /// This depends on the position of the block in the source file, so it changes when the file is edited.
+    pub fn generate_unique_command_block_viewed_variable_name(
+        source_file_name: &str,
+        node: &str,
+        line_number: usize,
+    ) -> String {
+        let description =
+            format!("'once' statement in file {source_file_name}, node {node}, line {line_number}");
+        Self::generate_unique_content_viewed_variable_name(&crc32_checksum_string(&description))
+    }
+
     /// Creates a [`Library`] with the standard functions that are included in Yarn Spinner.
     /// These are:
     /// - `string`: Converts a value to a string.
@@ -80,7 +100,7 @@ impl Library {
             "string" => <String as From<YarnValue >>::from,
             "number" => |value: YarnValue| f32::try_from(value).expect("Failed to convert a Yarn value to a number"),
             "bool" => |value: YarnValue| bool::try_from(value).expect("Failed to convert a Yarn value to a bool"),
-            "format_invariant" => |value: f32| value.to_string(),
+            "format_invariant" => <String as From<YarnValue>>::from,
             "random" => ||SmallRng::try_from_rng(&mut SysRng).unwrap().random_range(0.0..1.0),
             "random_range" => |min: f32, max: f32| {
                 if let Some(min) = min.as_int()
@@ -105,9 +125,16 @@ impl Library {
             "dec" => |value: f32| value.ceil() as i32 - 1,
             "decimal" => |value: f32| value.fract(),
             "int" => |value: f32| value.trunc() as i32,
-            // "format" => TODO: Hard to do without dedicated crate. Is it useful ?
+            "min" => f32::min,
+            "max" => f32::max,
+            "format" => format_like_dotnet,
         );
-        for r#type in [Type::Number, Type::String, Type::Boolean] {
+        for r#type in [
+            Type::Number,
+            Type::String,
+            Type::Boolean,
+            Type::Enum(Default::default()),
+        ] {
             library.add_methods(r#type);
         }
         library
@@ -242,6 +269,48 @@ macro_rules! yarn_library {
 }
 pub use yarn_library;
 
+/// The subset of .NET's `string.Format` that Yarn's `format(format, argument)` can use:
+/// `{0}` is replaced by the argument, `{{` and `}}` are literal braces.
+/// shortcut: alignment and format specifiers (`{0,5}`, `{0:F2}`) are accepted but ignored, implement them when a script needs them.
+fn format_like_dotnet(format: String, argument: YarnValue) -> String {
+    let argument = String::from(argument);
+    let mut result = String::new();
+    let mut chars = format.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '{' if chars.peek() == Some(&'{') => {
+                chars.next();
+                result.push('{');
+            }
+            '}' if chars.peek() == Some(&'}') => {
+                chars.next();
+                result.push('}');
+            }
+            '{' => {
+                let item: String = chars.by_ref().take_while(|c| *c != '}').collect();
+                let index = item.split([',', ':']).next().unwrap_or_default().trim();
+                assert_eq!("0", index, "format: only the placeholder {{0}} exists, got {{{item}}}");
+                result.push_str(&argument);
+            }
+            c => result.push(c),
+        }
+    }
+    result
+}
+
+/// CRC-32 (IEEE) of the UTF-8 bytes of `input` as the hex of its little-endian bytes,
+/// matching `Yarn.Utility.CRC32.GetChecksumString` of the C# implementation.
+pub fn crc32_checksum_string(input: &str) -> String {
+    let mut crc = 0xFFFF_FFFF_u32;
+    for byte in input.bytes() {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+        }
+    }
+    (!crc).to_le_bytes().iter().map(|b| format!("{b:02x}")).collect()
+}
+
 trait FloatExt: Copy {
     fn as_int(self) -> Option<i32>;
     fn round_places(self, places: u32) -> Self;
@@ -261,6 +330,12 @@ impl FloatExt for f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn formats_like_dotnet() {
+        assert_eq!("a 1 {b}", format_like_dotnet("a {0} {{b}}".into(), 1.0.into()));
+        assert_eq!("2639f4cb", crc32_checksum_string("123456789"));
+    }
 
     #[test]
     fn rounds_places() {

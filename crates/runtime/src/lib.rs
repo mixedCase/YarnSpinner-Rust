@@ -22,6 +22,7 @@ mod language;
 mod line;
 pub mod markup;
 mod pluralization;
+mod saliency;
 mod text_provider;
 mod variable_storage;
 mod virtual_machine;
@@ -49,6 +50,7 @@ pub mod prelude {
         language::*,
         line::*,
         markup::MarkupParseError,
+        saliency::*,
         text_provider::*,
         variable_storage::*,
     };

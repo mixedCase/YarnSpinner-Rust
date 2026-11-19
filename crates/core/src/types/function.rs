@@ -33,6 +33,11 @@ pub struct FunctionType {
     ///The type of value that this function returns.
     // Needs to be on the heap because of type recursion
     pub return_type: Box<Option<Type>>,
+
+    /// The type of the trailing variadic parameters, if the function accepts any number of them.
+    /// New in Yarn Spinner 3.
+    #[cfg_attr(feature = "bevy", reflect(ignore))]
+    pub variadic_parameter_type: Box<Option<Type>>,
 }
 
 impl From<FunctionType> for Type {

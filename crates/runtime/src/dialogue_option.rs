@@ -21,11 +21,6 @@ pub struct DialogueOption {
     /// When the user selects this option, this value should be used as the parameter for [`Dialogue::set_selected_option`].
     pub id: OptionId,
 
-    /// The name of the node that will be run if this option is selected.
-    ///
-    /// The value of this property not be valid if this is a shortcut option.
-    pub destination: Option<usize>,
-
     /// Gets a value indicating whether the player should be permitted to select this option.
     ///
     /// If this value is `false`, this option had a line condition on it that failed.

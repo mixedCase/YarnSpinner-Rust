@@ -1,9 +1,24 @@
-//! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/da39c7195107d8211f21c263e4084f773b84eaff/YarnSpinner/VirtualMachine.cs>, which we split into multiple files
+//! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/v3.3.1/YarnSpinner/VirtualMachine.cs>, which we split into multiple files
 
 use crate::prelude::*;
 use core::fmt::Debug;
 
+/// Where to continue when a node that was entered with `<<detour>>` returns.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "bevy", derive(Reflect))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "bevy", reflect(Debug, PartialEq))]
+#[cfg_attr(
+    all(feature = "bevy", feature = "serde"),
+    reflect(Serialize, Deserialize)
+)]
+pub(crate) struct CallSite {
+    pub(crate) node_name: String,
+    /// The detour instruction itself; execution resumes after it.
+    pub(crate) instruction: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "bevy", derive(Reflect))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "bevy", reflect(Debug, PartialEq, Default))]
@@ -12,28 +27,22 @@ use core::fmt::Debug;
     reflect(Serialize, Deserialize)
 )]
 pub(crate) struct State {
+    /// The name of the node that we're currently in.
+    pub(crate) current_node_name: Option<String>,
+
     /// The instruction number in the current node.
     pub(crate) program_counter: usize,
 
-    pub(crate) node_name: String,
-
     /// The current list of options that will be delivered
-    /// when the next RunOption instruction is encountered.
-    pub(crate) current_options: Vec<DialogueOption>,
+    /// when the next ShowOptions instruction is encountered,
+    /// along with the instruction each one jumps to.
+    pub(crate) current_options: Vec<(DialogueOption, usize)>,
 
     /// The value stack.
     pub(crate) stack: Vec<InternalValue>,
-}
 
-impl Default for State {
-    fn default() -> Self {
-        State {
-            program_counter: 0,
-            node_name: String::default(),
-            current_options: vec![],
-            stack: vec![]
-        }
-    }
+    /// The nodes to return to, innermost detour last.
+    pub(crate) call_stack: Vec<CallSite>,
 }
 
 impl State {
@@ -63,7 +72,11 @@ impl State {
             .unwrap_or_else(|| panic!("Tried to pop value, but the stack was empty."))
     }
 
-    /// Peeks the top value of the stack. Panics on an empty stack to mirror C# behavior.
+    /// Copies the top value of the stack and tries to convert it to the specified type.
+    ///
+    /// ## Panics
+    /// - Panics on an empty stack to mirror C# behavior.
+    /// - Panics if the value cannot be converted to the specified type.
     pub(crate) fn peek<T>(&self) -> T
     where
         T: TryFrom<InternalValue>,
@@ -72,14 +85,10 @@ impl State {
         self.peek_value()
             .clone()
             .try_into()
-            .unwrap_or_else(|e| panic!("Failed to convert popped value: {e:?}",))
+            .unwrap_or_else(|e| panic!("Failed to convert peeked value: {e:?}",))
     }
 
-    /// Copies the top value of the stack and tries to convert it to the specified type.
-    ///
-    /// ## Panics
-    /// - Panics on an empty stack to mirror C# behavior.
-    /// - Panics if the value cannot be converted to the specified type.
+    /// Peeks the top value of the stack. Panics on an empty stack to mirror C# behavior.
     pub(crate) fn peek_value(&self) -> &InternalValue {
         self.stack
             .last()

@@ -42,7 +42,6 @@ pub enum DialogueError {
     ContinueOnOptionSelectionError,
     NoNodeSelectedOnContinue,
     NoProgramLoaded,
-    ReturnStackEmpty,
     InvalidNode {
         node_name: String,
     },
@@ -51,9 +50,15 @@ pub enum DialogueError {
         function_name: String,
         library: Library,
     },
-    LabelNotFound {
-        label_name: String,
-        library: Library,
+    /// A smart variable could not be evaluated.
+    SmartVariableError {
+        name: String,
+        message: String,
+    },
+    /// The [`ContentSaliencyStrategy`] returned content that was not among the candidates.
+    InvalidSaliencySelection {
+        selected: String,
+        available: Vec<String>,
     },
 }
 
@@ -86,8 +91,8 @@ impl Display for DialogueError {
             InvalidNode { node_name } => write!(f, "No node named \"{node_name}\" has been loaded."),
             VariableStorageError(e) => Display::fmt(e, f),
             FunctionNotFound { function_name, library } => write!(f, "Function \"{function_name}\" not found in library: {library}"),
-            LabelNotFound { label_name, library } => write!(f, "Label \"{label_name}\" not found in library: {library}"),
-            ReturnStackEmpty => write!(f, "Tried to return from node, but return stack is empty")
+            SmartVariableError { name, message } => write!(f, "Error when evaluating smart variable {name}: {message}"),
+            InvalidSaliencySelection { selected, available } => write!(f, "Content saliency strategy did not return a valid selection (available content IDs to choose from were {}, but strategy returned {selected})", available.join(", ")),
         }
     }
 }
@@ -260,11 +265,8 @@ impl Dialogue {
             "Called `continue_` on a dialogue that was compiled with the `bevy` feature. Did you mean to call `continue_with_world` instead?"
         );
 
-        self.vm.continue_(|vm, instruction| {
-            vm.run_instruction(instruction, |function, parameters| {
-                function.call(parameters)
-            })
-        })
+        self.vm
+            .continue_(&mut |function, parameters| function.call(parameters))
     }
 
     #[cfg(feature = "bevy")]
@@ -286,11 +288,8 @@ impl Dialogue {
     /// Specifically, we cannot guarantee [`Send`] and [`Sync`] properly without a lot of [`std::sync::RwLock`] boilerplate. The original implementation
     /// also allows unsound parallel mutation of [`Dialogue`]'s state, which would result in a deadlock in our case.
     pub fn continue_with_world(&mut self, world: &mut World) -> Result<Vec<DialogueEvent>> {
-        self.vm.continue_(move |vm, instruction| {
-            vm.run_instruction(instruction, |function, parameters| {
-                function.call_with_world(parameters, world)
-            })
-        })
+        self.vm
+            .continue_(&mut |function, parameters| function.call_with_world(parameters, world))
     }
 
     /// Returns true if the [`Dialogue`] is in a state where [`Dialogue::continue_`] can be called.
@@ -344,7 +343,7 @@ impl Dialogue {
     ///
     /// Returns an error if no node with the value of `node_name` has been loaded.
     pub fn set_node(&mut self, node_name: impl Into<String>) -> Result<&mut Self> {
-        self.vm.jump_to_node(node_name)?;
+        self.vm.set_node(node_name)?;
         Ok(self)
     }
 
@@ -424,6 +423,150 @@ impl Dialogue {
         })
     }
 
+    /// Returns the trimmed value of the header `header_name` of the node `node_name`,
+    /// or [`None`] if the node or the header doesn't exist. If the header is present more than once, the first one wins.
+    #[must_use]
+    pub fn get_header_value(&self, node_name: &str, header_name: &str) -> Option<String> {
+        self.get_node_logging_errors(node_name)?
+            .get_header(header_name)
+    }
+
+    /// Returns whether `node_name` is a node group, i.e. whether multiple nodes with this title
+    /// and `when:` headers exist. Running a node group runs the member chosen by the
+    /// [`ContentSaliencyStrategy`].
+    #[must_use]
+    pub fn is_node_group(&self, node_name: &str) -> bool {
+        self.vm
+            .program
+            .as_ref()
+            .and_then(|program| program.nodes.get(node_name))
+            .is_some_and(|node| node.is_node_group_hub())
+    }
+
+    /// Returns whether the node `node_name` was visited at least once. Requires the node to be tracked,
+    /// see [`Dialogue::node_visit_count`].
+    #[must_use]
+    pub fn is_node_visited(&self, node_name: &str) -> bool {
+        self.node_visit_count(node_name) > 0.0
+    }
+
+    /// Returns how many times the node `node_name` was run to its end. Nodes are only tracked if a script
+    /// calls `visited` or `visited_count` with their name, or if they have the header `tracking: always`.
+    #[must_use]
+    pub fn node_visit_count(&self, node_name: &str) -> f32 {
+        let name = Library::generate_unique_visited_variable_for_node(node_name);
+        match self.variable_storage().get(&name) {
+            Ok(YarnValue::Number(count)) => count,
+            _ => 0.0,
+        }
+    }
+
+    /// Returns how the value of the variable `name` is determined: stored, smart or unknown.
+    #[must_use]
+    pub fn variable_kind(&self, name: &str) -> VariableKind {
+        if self.variable_storage().contains(name) {
+            VariableKind::Stored
+        } else {
+            self.vm
+                .program
+                .as_ref()
+                .map_or(VariableKind::Unknown, |program| program.variable_kind(name))
+        }
+    }
+
+    /// Evaluates the smart variable `name` and returns its current value.
+    /// Returns `Ok(None)` if `name` is not a smart variable of the loaded program.
+    ///
+    /// Note that when compiling with the `bevy` feature, you should use [`Dialogue::get_smart_variable_with_world`] instead.
+    pub fn get_smart_variable(&self, name: &str) -> Result<Option<YarnValue>> {
+        self.vm
+            .get_smart_variable(name, &mut |function, parameters| function.call(parameters))
+    }
+
+    /// Returns the content that running the node group `node_group` can choose from, with its conditions evaluated.
+    /// Pass the result to a [`ContentSaliencyStrategy`] to find out what would run.
+    /// For a node that is not a node group, the node itself is the only content.
+    ///
+    /// Note that when compiling with the `bevy` feature, you should use [`Dialogue::get_saliency_options_for_node_group_with_world`] instead.
+    pub fn get_saliency_options_for_node_group(
+        &self,
+        node_group: &str,
+    ) -> Result<Vec<ContentSaliencyOption>> {
+        self.vm
+            .get_saliency_options_for_node_group(node_group, &mut |function, parameters| {
+                function.call(parameters)
+            })
+    }
+
+    /// Returns whether running `node_group` would show any content: `true` for a plain node, and for a node group
+    /// if the [`ContentSaliencyStrategy`] finds a member to run. `false` if the node doesn't exist.
+    /// Available to scripts as the function `has_any_content`.
+    ///
+    /// Note that when compiling with the `bevy` feature, you should use [`Dialogue::has_any_content_with_world`] instead.
+    pub fn has_any_content(&self, node_group: &str) -> Result<bool> {
+        self.vm
+            .has_any_content(node_group, &mut |function, parameters| function.call(parameters))
+    }
+
+    /// Like [`Dialogue::get_smart_variable`], but functions may be Bevy systems.
+    #[cfg(feature = "bevy")]
+    pub fn get_smart_variable_with_world(
+        &self,
+        name: &str,
+        world: &mut World,
+    ) -> Result<Option<YarnValue>> {
+        self.vm.get_smart_variable(name, &mut |function, parameters| {
+            function.call_with_world(parameters, world)
+        })
+    }
+
+    /// Like [`Dialogue::get_saliency_options_for_node_group`], but functions may be Bevy systems.
+    #[cfg(feature = "bevy")]
+    pub fn get_saliency_options_for_node_group_with_world(
+        &self,
+        node_group: &str,
+        world: &mut World,
+    ) -> Result<Vec<ContentSaliencyOption>> {
+        self.vm
+            .get_saliency_options_for_node_group(node_group, &mut |function, parameters| {
+                function.call_with_world(parameters, world)
+            })
+    }
+
+    /// Like [`Dialogue::has_any_content`], but functions may be Bevy systems.
+    #[cfg(feature = "bevy")]
+    pub fn has_any_content_with_world(&self, node_group: &str, world: &mut World) -> Result<bool> {
+        self.vm.has_any_content(node_group, &mut |function, parameters| {
+            function.call_with_world(parameters, world)
+        })
+    }
+
+    /// The strategy that decides which item of a line group or which member of a node group runs.
+    /// Defaults to [`RandomBestLeastRecentlyViewedSaliencyStrategy`].
+    #[must_use]
+    pub fn content_saliency_strategy(&self) -> &dyn ContentSaliencyStrategy {
+        self.vm.saliency_strategy.as_ref()
+    }
+
+    /// Sets the strategy that decides which item of a line group or which member of a node group runs.
+    pub fn set_content_saliency_strategy(
+        &mut self,
+        strategy: Box<dyn ContentSaliencyStrategy>,
+    ) -> &mut Self {
+        self.vm.saliency_strategy = strategy;
+        self
+    }
+
+    /// Signals that the user selected none of the options delivered by [`DialogueEvent::Options`],
+    /// for example because none of them was available. The dialogue then continues with the content
+    /// after the options. New in Yarn Spinner 3.1; corresponds to `Dialogue.NoOptionSelected`.
+    ///
+    /// Returns an error if the dialogue is not waiting for an option to be selected.
+    pub fn set_no_option_selected(&mut self) -> Result<&mut Self> {
+        self.vm.set_selected_option(None)?;
+        Ok(self)
+    }
+
     /// Gets a value indicating whether a specified node exists in the [`Program`].
     #[must_use]
     pub fn node_exists(&self, node_name: &str) -> bool {
@@ -486,7 +629,7 @@ impl Dialogue {
     /// ## See Also
     /// - [`Dialogue::continue_`]
     pub fn set_selected_option(&mut self, selected_option_id: OptionId) -> Result<&mut Self> {
-        self.vm.set_selected_option(selected_option_id)?;
+        self.vm.set_selected_option(Some(selected_option_id))?;
         Ok(self)
     }
 

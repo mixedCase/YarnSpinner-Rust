@@ -161,40 +161,12 @@ impl Program {
     }
 }
 
-#[derive(Debug)]
-pub enum InstructionCastError {
-    IncorrectInstructionType,
-    NotADestinationInstructionType
-}
-
 macro_rules! instruction_from {
     ($( $enum_val:ident($instruction:ty) ),+) => {
         $(
             impl From<$instruction> for Instruction {
                 fn from(value: $instruction) -> Self {
                     Self { instruction_type: Some(InstructionType::$enum_val(value)) }
-                }
-            }
-
-            impl<'a> TryFrom<&'a Instruction> for &'a $instruction {
-                type Error = InstructionCastError;
-
-                fn try_from(value: &'a Instruction) -> Result<Self, Self::Error> {
-                    match &value.instruction_type {
-                        Some(InstructionType::$enum_val(t)) => Ok(t),
-                        _ => Err(Self::Error::IncorrectInstructionType)
-                    }
-                }
-            }
-
-            impl<'a> TryFrom<&'a mut Instruction> for &'a mut $instruction {
-                type Error = InstructionCastError;
-
-                fn try_from(value: &'a mut Instruction) -> Result<Self, Self::Error> {
-                    match &mut value.instruction_type {
-                        Some(InstructionType::$enum_val(t)) => Ok(t),
-                        _ => Err(Self::Error::IncorrectInstructionType)
-                    }
                 }
             }
         )*
@@ -227,59 +199,136 @@ instruction_from! {
     SelectSaliencyCandidate(SelectSaliencyCandidateInstruction)
 }
 
-impl Node {
-
-    pub fn get_header(&self, key: &str) -> Option<String> {
-        return self.headers.iter().find_map(|h| if h.key == key { Some(h.value.clone()) } else { None })
-    }
-
-    pub fn tags(&self) -> Vec<String> {
-        let Some(tags) = self.get_header("tags") else { return Vec::new(); };
-
-        tags.split(' ').map(|t| t.into()).collect()
+impl Instruction {
+    /// Sets the jump destination of this instruction. Returns `false` if this kind of instruction has none.
+    pub fn set_destination(&mut self, destination: usize) -> bool {
+        let destination = destination as i32;
+        match self.instruction_type.as_mut() {
+            Some(InstructionType::JumpTo(i)) => i.destination = destination,
+            Some(InstructionType::AddOption(i)) => i.destination = destination,
+            Some(InstructionType::JumpIfFalse(i)) => i.destination = destination,
+            Some(InstructionType::AddSaliencyCandidate(i)) => i.destination = destination,
+            Some(InstructionType::AddSaliencyCandidateFromNode(i)) => i.destination = destination,
+            _ => return false,
+        }
+        true
     }
 }
 
-pub trait Destination {
-    fn destination(&self) -> usize;
-    fn set_destination(&mut self, destination: usize);
+/// How the value of a variable is determined. New in Yarn Spinner 3.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VariableKind {
+    /// The variable is not known to the program.
+    Unknown,
+    /// The value is kept in the variable storage (or is still the initial value from the program).
+    Stored,
+    /// A smart variable: the value is computed from an expression every time it is read.
+    Smart,
 }
 
-macro_rules! impl_destination {
-    ($($enum_val:ident($ty:ident)),+) => {
-        $(
-            impl Destination for $ty {
-                fn destination(&self) -> usize {
-                    self.destination as usize
-                }
+impl Program {
+    /// The tag on the generated nodes that compute smart variables.
+    pub const SMART_VARIABLE_NODE_TAG: &'static str = "Yarn.SmartVariable";
 
-                fn set_destination(&mut self, destination: usize) {
-                    self.destination = destination as i32;
-                }
-            }
-        )+
+    /// Returns the nodes that compute the values of smart variables. The node name is the variable name.
+    pub fn smart_variable_nodes(&self) -> impl Iterator<Item = &Node> {
+        self.nodes
+            .values()
+            .filter(|node| node.tags().iter().any(|tag| tag == Self::SMART_VARIABLE_NODE_TAG))
+    }
 
-        impl<'a> TryFrom<&'a mut Instruction> for &'a mut dyn Destination {
-            type Error = InstructionCastError;
-
-            fn try_from(value: &'a mut Instruction) -> Result<Self, Self::Error> {
-                match &mut value.instruction_type {
-                    $(
-                        Some(InstructionType::$enum_val(val)) => {
-                            Ok(val as &mut dyn Destination)
-                        },
-                    )+
-                    _ => Err(InstructionCastError::NotADestinationInstructionType)
-                }
-            }
+    /// Returns how the value of the variable `name` is determined.
+    pub fn variable_kind(&self, name: &str) -> VariableKind {
+        if self.initial_values.contains_key(name) {
+            VariableKind::Stored
+        } else if self
+            .nodes
+            .get(name)
+            .is_some_and(|node| node.tags().iter().any(|tag| tag == Self::SMART_VARIABLE_NODE_TAG))
+        {
+            VariableKind::Smart
+        } else {
+            VariableKind::Unknown
         }
     }
+
+    /// Returns the IDs of all lines and options the node can show.
+    pub fn line_ids_for_node(&self, node_name: &str) -> Option<Vec<LineId>> {
+        let node = self.nodes.get(node_name)?;
+        Some(
+            node.instructions
+                .iter()
+                .filter_map(|instruction| match instruction.instruction_type.as_ref()? {
+                    InstructionType::RunLine(line) => Some(line.line_id.clone().into()),
+                    InstructionType::AddOption(option) => Some(option.line_id.clone().into()),
+                    _ => None,
+                })
+                .collect(),
+        )
+    }
 }
 
-impl_destination!(
-    JumpTo(JumpToInstruction),
-    AddOption(AddOptionInstruction),
-    JumpIfFalse(JumpIfFalseInstruction),
-    AddSaliencyCandidate(AddSaliencyCandidateInstruction),
-    AddSaliencyCandidateFromNode(AddSaliencyCandidateFromNodeInstruction)
-);
+impl Node {
+    /// Header holding the name of the variable that counts how often this node was visited.
+    pub const TRACKING_VARIABLE_NAME_HEADER: &'static str = "$Yarn.Internal.TrackingVariable";
+    /// Header holding the `;`-separated smart variables that must all be true for this node group member to run.
+    pub const CONTENT_SALIENCY_CONDITION_VARIABLES_HEADER: &'static str =
+        "$Yarn.Internal.ContentSaliencyVariables";
+    /// Header holding the complexity score of the `when:` conditions of this node group member.
+    pub const CONTENT_SALIENCY_CONDITION_COMPLEXITY_SCORE_HEADER: &'static str =
+        "$Yarn.Internal.ContentSaliencyComplexity";
+    /// Header marking the generated node that selects a member of a node group.
+    pub const NODE_IS_HUB_NODE_HEADER: &'static str = "$Yarn.Internal.NodeGroupHub";
+    /// Header holding the name of the node group this node is a member of.
+    pub const NODE_GROUP_HEADER: &'static str = "$Yarn.Internal.NodeGroup";
+
+    /// Returns the trimmed value of the first header with the given key.
+    pub fn get_header(&self, key: &str) -> Option<String> {
+        self.headers
+            .iter()
+            .find(|header| header.key == key)
+            .map(|header| header.value.trim().to_owned())
+    }
+
+    /// The tags of the `tags:` header. Empty if the header is missing or blank.
+    pub fn tags(&self) -> Vec<String> {
+        self.get_header("tags")
+            .map(|tags| tags.split_whitespace().map(Into::into).collect())
+            .unwrap_or_default()
+    }
+
+    /// The name of the variable that counts the visits of this node, if the node is tracked.
+    pub fn tracking_variable_name(&self) -> Option<String> {
+        self.get_header(Self::TRACKING_VARIABLE_NAME_HEADER)
+    }
+
+    /// Whether this is the generated node that selects which member of a node group runs.
+    pub fn is_node_group_hub(&self) -> bool {
+        self.get_header(Self::NODE_IS_HUB_NODE_HEADER).is_some()
+    }
+
+    /// The name of the node group this node is a member of.
+    pub fn node_group(&self) -> Option<String> {
+        self.get_header(Self::NODE_GROUP_HEADER)
+    }
+
+    /// The smart variables that must all evaluate to `true` for this node group member to be able to run.
+    pub fn content_saliency_condition_variables(&self) -> Vec<String> {
+        self.get_header(Self::CONTENT_SALIENCY_CONDITION_VARIABLES_HEADER)
+            .map(|variables| {
+                variables
+                    .split(';')
+                    .filter(|variable| !variable.is_empty())
+                    .map(Into::into)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The complexity score of the `when:` conditions of this node, or -1 if it has none.
+    pub fn content_saliency_condition_complexity_score(&self) -> i32 {
+        self.get_header(Self::CONTENT_SALIENCY_CONDITION_COMPLEXITY_SCORE_HEADER)
+            .and_then(|score| score.parse().ok())
+            .unwrap_or(-1)
+    }
+}

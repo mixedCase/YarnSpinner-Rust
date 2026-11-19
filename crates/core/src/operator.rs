@@ -96,9 +96,10 @@ impl fmt::Display for Operator {
             Operator::And => f.write_str("And"),
             Operator::Xor => f.write_str("Xor"),
             Operator::Not => f.write_str("Not"),
-            Operator::UnarySubtract => f.write_str("UnarySubtract"),
+            // Named like the C# `Operator` members so that compiled programs are interchangeable with `ysc`.
+            Operator::UnarySubtract => f.write_str("UnaryMinus"),
             Operator::Add => f.write_str("Add"),
-            Operator::Subtract => f.write_str("Subtract"),
+            Operator::Subtract => f.write_str("Minus"),
             Operator::Multiply => f.write_str("Multiply"),
             Operator::Divide => f.write_str("Divide"),
             Operator::Modulo => f.write_str("Modulo"),

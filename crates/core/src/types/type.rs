@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use alloc::borrow::Cow;
 use crate::types::any::any_type_properties;
 use crate::types::boolean::boolean_type_properties;
 use crate::types::number::number_type_properties;
@@ -42,6 +43,8 @@ pub enum Type {
     Number,
     /// The type representing strings
     String,
+    /// A user-defined enum, declared with `<<enum>>`. New in Yarn Spinner 3.
+    Enum(EnumType),
 }
 
 impl Display for Type {
@@ -78,8 +81,11 @@ impl TypeFormat for Type {
 
 impl Type {
     /// Returns the name of this type.
-    pub fn name(&self) -> &'static str {
-        self.properties().name
+    pub fn name(&self) -> Cow<'static, str> {
+        match self {
+            Type::Enum(enum_type) => Cow::Owned(enum_type.name.clone()),
+            _ => Cow::Borrowed(self.properties().name),
+        }
     }
 
     /// Returns a more verbose description of this type.
@@ -99,6 +105,7 @@ impl Type {
             Type::Function(function_type) => function_type_properties(function_type),
             Type::Number => number_type_properties(),
             Type::String => string_type_properties(),
+            Type::Enum(enum_type) => enum_type_properties(enum_type),
         }
     }
 
@@ -113,7 +120,11 @@ impl Type {
 
     /// Does not check whether the method exists. Use [`Type::has_method`] for that.
     pub fn get_canonical_name_for_method(&self, method_name: &str) -> String {
-        format!("{}.{}", self.name(), method_name)
+        match self {
+            // All enums share one implementation, like in the C# standard library
+            Type::Enum(_) => format!("Enum.{method_name}"),
+            _ => format!("{}.{}", self.name(), method_name),
+        }
     }
 
     /// The types that can be explicitly constructed in Yarn with variable assignments.
@@ -200,6 +211,29 @@ macro_rules! type_ids {
     ($($type:ty,)*) => {
         vec![$(TypeId::of::<$type>(), TypeId::of::<&$type>()),*]
     };
+}
+
+impl Type {
+    /// If `type_id` is the type of a variadic parameter (a `Vec` of a type usable in Yarn functions),
+    /// returns the Yarn type of its elements.
+    pub fn variadic_element_type(type_id: TypeId) -> Option<Type> {
+        macro_rules! vec_ids {
+            ($($type:ty),*) => { [$(TypeId::of::<Vec<$type>>()),*] };
+        }
+        if vec_ids![String].contains(&type_id) {
+            Some(Type::String)
+        } else if vec_ids![bool].contains(&type_id) {
+            Some(Type::Boolean)
+        } else if vec_ids![YarnValue].contains(&type_id) {
+            Some(Type::Any)
+        } else if vec_ids![f32, f64, i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, usize, isize]
+            .contains(&type_id)
+        {
+            Some(Type::Number)
+        } else {
+            None
+        }
+    }
 }
 
 impl TryFrom<TypeId> for Type {

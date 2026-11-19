@@ -91,6 +91,28 @@ impl<T: YarnFnParam + 'static> YarnFnParam for Option<T> {
     }
 }
 
+/// A variadic parameter: collects all remaining arguments. Like [`Option`], it must come last.
+impl<T> YarnFnParam for Vec<T>
+where
+    T: 'static,
+    for<'a> T: YarnFnParam<Item<'a> = T, Optionality = Required>,
+{
+    type Item<'new> = Vec<T>;
+    type Optionality = Optional;
+
+    fn retrieve<'a>(iter: &mut YarnValueWrapperIter<'a>) -> Self::Item<'a> {
+        let mut values = Vec::new();
+        while iter.peek().is_some() {
+            values.push(T::retrieve(iter));
+        }
+        values
+    }
+
+    fn parameter_types() -> Vec<TypeId> {
+        vec![TypeId::of::<Vec<T>>()]
+    }
+}
+
 macro_rules! impl_yarn_fn_param_tuple {
     ($($param: ident),*) => {
         #[allow(non_snake_case)]
