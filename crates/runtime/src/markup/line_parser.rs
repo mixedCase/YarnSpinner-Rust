@@ -96,7 +96,16 @@ impl LineParser {
             return Ok(ParsedMarkup::new());
         }
 
-        self.input = normalize(input);
+        let input = normalize(input);
+        // The implicit character name ends at the first colon that is not escaped.
+        // Find it before removing the escapes, like the original does since Yarn Spinner 3.2.
+        const ESCAPED_COLON: &str = "\\:";
+        let implicit_character = IMPLICIT_CHARACTER.captures(&input).map(|captures| {
+            let whole_match = captures.get(0).unwrap().as_str();
+            let length = whole_match.len() - whole_match.matches(ESCAPED_COLON).count();
+            (captures[1].replace(ESCAPED_COLON, ":"), length)
+        });
+        self.input = input.replace(ESCAPED_COLON, ":");
         self.source_position = 0;
 
         let mut text = String::new();
@@ -193,16 +202,14 @@ impl LineParser {
 
         // Attempt to generate a character attribute from the start
         // of the string to the first colon
-        let Some(match_) = END_OF_CHARACTER_MARKER.find(&self.input) else {
+        let Some((character_name, character_length)) = implicit_character else {
             return Ok(ParsedMarkup { text, attributes });
         };
-
-        let character_name = self.input[..match_.start()].to_string();
 
         let character_attribute = MarkupAttribute {
             name: CHARACTER_ATTRIBUTE.to_string(),
             position: 0,
-            length: match_.end(),
+            length: character_length,
             properties: HashMap::from([(
                 CHARACTER_ATTRIBUTE_NAME_PROPERTY.to_string(),
                 character_name.into(),
@@ -742,5 +749,7 @@ pub const CHARACTER_ATTRIBUTE_NAME_PROPERTY: &str = "name";
 /// if a tag had preceding whitespace or begins the line. This property must be a bool value.
 pub const TRIM_WHITESPACE_PROPERTY: &str = "trimwhitespace";
 
-/// A regular expression that matches a colon followed by optional whitespace.
-static END_OF_CHARACTER_MARKER: Lazy<Regex> = Lazy::new(|| Regex::new(r":\s*").unwrap());
+/// A regular expression that matches everything up to the first colon that is not escaped with a backslash,
+/// followed by optional whitespace. The first group is the name of the character.
+static IMPLICIT_CHARACTER: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^((?:[^:\\]|\\.)*):\s*").unwrap());
