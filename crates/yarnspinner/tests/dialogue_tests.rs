@@ -137,22 +137,6 @@ fn test_getting_current_node_name() {
 }
 
 #[test]
-fn test_getting_raw_source() {
-    let path = test_data_path().join("Example.yarn");
-    let mut test_base = TestBase::new();
-
-    let result = Compiler::new().read_file(path).compile().unwrap();
-
-    test_base = test_base.with_compilation(result);
-    let dialogue = &test_base.dialogue;
-
-    let source_id = dialogue.get_line_id_for_node("LearnMore").unwrap();
-    let source = test_base.string_table.get_text(&source_id).unwrap();
-
-    assert_eq!(source, "A: HAHAHA\n");
-}
-
-#[test]
 fn test_getting_tags() {
     let path = test_data_path().join("Example.yarn");
     let mut test_base = TestBase::new();

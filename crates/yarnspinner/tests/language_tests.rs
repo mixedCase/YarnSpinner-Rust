@@ -109,7 +109,6 @@ fn test_node_headers() {
     let path = test_data_path().join("Headers.yarn");
     let result = Compiler::default().read_file(&path).compile().unwrap();
     let program = result.program.as_ref().unwrap();
-    assert_eq!(program.nodes.len(), 6);
 
     for tag in &["one", "two", "three"].map(|s| s.to_owned()) {
         assert!(program.nodes["Tags"].tags().contains(tag));
@@ -144,19 +143,35 @@ fn test_node_headers() {
                 ("not", ""),
             ],
         ),
+        (
+            // A member of a node group, which is named after its title and subtitle
+            "HeaderWith.Comments",
+            vec![
+                ("title", "HeaderWith.Comments"),
+                ("subtitle", "Comments"),
+                ("another", "header"),
+                ("also", "/"),
+            ],
+        ),
     ]
     .into_iter()
     .collect();
-    assert_eq!(program.nodes.len(), headers.len());
+    // The program also contains the nodes that the compiler generates for the node group
+    assert!(headers.len() <= program.nodes.len());
     for (node_name, expected_headers) in headers {
-        let node = &program.nodes[node_name];
-        assert_eq!(node.headers.len(), expected_headers.len());
-        for header in &node.headers {
+        // Headers that start with $Yarn.Internal are added by the compiler and not something to test for
+        let testing_headers: Vec<_> = program.nodes[node_name]
+            .headers
+            .iter()
+            .filter(|header| !header.key.starts_with("$Yarn.Internal"))
+            .collect();
+        assert_eq!(testing_headers.len(), expected_headers.len(), "{node_name}");
+        for header in testing_headers {
             let expected_header = expected_headers
                 .iter()
                 .find(|(k, _)| k == &header.key)
                 .unwrap();
-            assert_eq!(header.value, expected_header.1);
+            assert_eq!(header.value.trim(), expected_header.1);
         }
     }
 

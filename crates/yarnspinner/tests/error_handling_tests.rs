@@ -110,7 +110,7 @@ fn test_compiling_same_file_twice_fails() {
     assert!(
         diagnostics
             .iter()
-            .any(|d| d.message.contains("Duplicate line ID line:794945"))
+            .any(|d| d.message.contains("Duplicate line ID 'line:794945'"))
     );
 }
 

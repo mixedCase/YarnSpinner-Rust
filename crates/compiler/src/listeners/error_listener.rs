@@ -17,7 +17,8 @@ use yarnspinner_core::prelude::*;
 
 mod diagnostic;
 pub(crate) struct LexerErrorListener {
-    pub(crate) diagnostics: RefCell<Vec<Diagnostic>>,
+    // Shared, because the lexer takes ownership of the listener
+    pub(crate) diagnostics: Rc<RefCell<Vec<Diagnostic>>>,
     file_name: String,
 }
 

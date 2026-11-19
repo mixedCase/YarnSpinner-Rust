@@ -8,7 +8,7 @@ mod test_base;
 #[test]
 fn test_no_options_line_not_tagged() {
     let result =
-        Compiler::from_test_source("title:Start\n---\nline without options #line:1\n===\n")
+        Compiler::from_source("title:Start\n---\nline without options #line:1\n===\n")
             .compile()
             .unwrap();
 
@@ -18,7 +18,7 @@ fn test_no_options_line_not_tagged() {
 
 #[test]
 fn test_line_before_options_tagged_last_line() {
-    let result = Compiler::from_test_source(
+    let result = Compiler::from_source(
         "title:Start\n---\nline before options #line:1\n-> option 1\n-> option 2\n===\n",
     )
     .compile()
@@ -30,7 +30,7 @@ fn test_line_before_options_tagged_last_line() {
 
 #[test]
 fn test_line_not_before_options_not_tagged_last_line() {
-    let result = Compiler::from_test_source(
+    let result = Compiler::from_source(
         "title:Start\n---\nline not before options #line:0\nline before options #line:1\n-> option 1\n-> option 2\n===\n",
     ).compile().unwrap();
 
@@ -40,7 +40,7 @@ fn test_line_not_before_options_not_tagged_last_line() {
 
 #[test]
 fn test_line_after_options_not_tagged_last_line() {
-    let result = Compiler::from_test_source(
+    let result = Compiler::from_source(
         "title:Start\n---\nline before options #line:1\n-> option 1\n-> option 2\nline after options #line:2\n===\n",
     ).compile().unwrap();
 
@@ -161,7 +161,7 @@ line before call #line:4
 
 #[test]
 fn test_line_is_last_before_another_node_not_tagged() {
-    let result = Compiler::from_test_source(
+    let result = Compiler::from_source(
         "title: Start\n---\nlast line #line:0\n===\ntitle: Second\n---\n-> option 1\n===\n",
     )
     .compile()
@@ -180,7 +180,7 @@ fn test_comments_arent_tagged() {
     let source = "title: Start\n---\n\\\\\n===";
 
     // ensuring the base text compiles fine as is
-    let result = Compiler::from_test_source(source)
+    let result = Compiler::from_source(source)
         .with_compilation_type(CompilationType::StringsOnly)
         .compile();
 
@@ -190,7 +190,7 @@ fn test_comments_arent_tagged() {
     let (tagged_version, _) = Compiler::tag_lines(source, vec![]).unwrap().unwrap();
 
     // recompiling, we should have no errors
-    let result = Compiler::from_test_source(&tagged_version)
+    let result = Compiler::from_source(&tagged_version)
         .with_compilation_type(CompilationType::StringsOnly)
         .compile();
 

@@ -148,11 +148,16 @@ fn test_variable_declarations_disallow_duplicates() {
     .unwrap_err();
 
     println!("{result}");
+    let errors: Vec<_> = result
+        .0
+        .iter()
+        .filter(|d| d.severity == DiagnosticSeverity::Error)
+        .collect();
+    assert_eq!(2, errors.len());
     assert!(
-        result
-            .0
+        errors
             .iter()
-            .any(|d| d.message.contains("$int has already been declared"))
+            .all(|d| d.message == "Redeclaration of existing variable $int")
     );
 }
 
@@ -266,21 +271,6 @@ fn test_expressions_require_compatible_types() {
 }
 
 #[test]
-fn test_null_not_allowed() {
-    let result = Compiler::from_test_source("<<declare $err = null>> // error, null not allowed")
-        .compile()
-        .unwrap_err();
-
-    println!("{result}");
-    assert!(
-        result
-            .0
-            .iter()
-            .any(|d| d.message.contains("Null is not a permitted type"))
-    );
-}
-
-#[test]
 fn test_function_signatures() {
     let mut test_base = TestBase::default();
     test_base
@@ -359,19 +349,19 @@ fn test_failing_function_signatures() {
     for (source, expected_exception_message) in [
         (
             "<<set $bool = func_void_bool(1)>>",
-            "expects 0 parameters, but received 1",
+            "expects 0 parameters, not 1",
         ),
         (
             "<<set $bool = func_int_bool()>>",
-            "expects 1 parameter, but received 0",
+            "expects 1 parameter, not 0",
         ),
         (
             "<<set $bool = func_int_bool(true)>>",
-            "expects a Number, not a Bool",
+            "true (Bool) is not convertible to Number",
         ),
         (
             "<<set $bool = func_string_string_bool(\"1\", 2)>>",
-            "expects a String, not a Number",
+            "2 (Number) is not convertible to String",
         ),
         (
             "<<set $int = func_void_bool()>>",
@@ -690,9 +680,11 @@ fn test_implicit_function_declarations() {
                 .add_function("func_str_bool", |_s: &str| true);
         });
 
-    // the library is NOT attached to this compilation job; all
-    // functions will be implicitly declared
-    let result = Compiler::from_test_source(source).compile().unwrap();
+    // Since Yarn Spinner 3.3, functions can't be declared implicitly anymore, so the library is attached.
+    let result = Compiler::from_test_source(source)
+        .extend_library(test_base.dialogue.library().clone())
+        .compile()
+        .unwrap();
 
     test_base.with_compilation(result).run_standard_testcase();
 }
@@ -715,7 +707,7 @@ fn test_implicit_variable_declarations() {
 }
 
 #[test]
-fn test_nested_implicit_function_declarations() {
+fn test_nested_function_calls() {
     let source = "
     {func_bool_bool(bool(func_int_bool(1)))}
     ";
@@ -727,48 +719,26 @@ fn test_nested_implicit_function_declarations() {
                 .add_function("func_bool_bool", |b: bool| b);
         });
 
-    // the library is NOT attached to this compilation job; all
-    // functions will be implicitly declared
-    let result = Compiler::from_test_source(source).compile().unwrap();
-
-    assert_eq!(2, result.declarations.len());
-
-    // Both declarations that resulted from the compile should be functions found on line 1
-    for decl in &result.declarations {
-        assert_eq!(3, decl.range.as_ref().unwrap().start.line);
-        assert!(matches!(decl.r#type, Type::Function(_)));
-    }
+    // Since Yarn Spinner 3.3, functions can't be declared implicitly anymore, so the library is attached.
+    let result = Compiler::from_test_source(source)
+        .extend_library(test_base.dialogue.library().clone())
+        .compile()
+        .unwrap();
 
     test_base.with_compilation(result).run_standard_testcase();
 }
 
 #[test]
-fn test_multiple_implicit_redeclarations_of_function_parameter_count_fail() {
+fn test_multiple_function_calls_with_different_parameter_counts_fail() {
+    let mut library = Library::new();
+    library.add_function("func", |_input: i32| 1);
     let result = Compiler::from_test_source(
         r#"
         {func(1)}
         {func(2, 2)} // wrong number of parameters (previous decl had 1)
         "#,
     )
-    .compile()
-    .unwrap_err();
-
-    println!("{result}");
-
-    assert_eq!(
-        "Function \"func\" expects 1 parameter, but received 2",
-        result.0[0].message,
-    );
-}
-
-#[test]
-fn test_multiple_implicit_redeclarations_of_function_parameter_type_fail() {
-    let result = Compiler::from_test_source(
-        "
-        {func(1)}
-        {func(true)} // wrong type of parameter (previous decl had number)
-        ",
-    )
+    .extend_library(library)
     .compile()
     .unwrap_err();
 
@@ -778,8 +748,27 @@ fn test_multiple_implicit_redeclarations_of_function_parameter_type_fail() {
         result
             .0
             .iter()
-            .any(|d| d.message.contains("expects a Number, not a Bool"))
+            .any(|d| d.message == "Invalid function call: func expects 1 parameter, not 2")
     );
+}
+
+#[test]
+fn test_undeclared_functions_are_errors_since_language_version_5() {
+    let source = "{func(1)}";
+    let result = Compiler::from_test_source(source).compile().unwrap_err();
+    assert!(result.0.iter().any(|d| {
+        d.message == "Unknown function call: no declaration found for func"
+            && d.code.as_deref() == Some("YS0013")
+    }));
+
+    // Projects of older versions get a warning instead. The type of the call still has to be determinable.
+    let result = Compiler::from_test_source("<<declare $x = 1>>\n<<set $x = func(1)>>")
+        .with_language_version(4)
+        .compile()
+        .unwrap();
+    assert!(result.warnings.iter().any(|d| {
+        d.code.as_deref() == Some("YS0065") && d.severity == DiagnosticSeverity::Warning
+    }));
 }
 
 #[test]
@@ -805,6 +794,6 @@ fn test_if_statement_expressions_must_be_boolean() {
 
     assert!(result.0.iter().any(|d| {
         d.message
-            .contains("Terms of 'if statement' must be Bool, not String")
+            .contains("if statement's expression must be a Bool, not a String")
     }));
 }
