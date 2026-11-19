@@ -3,6 +3,7 @@
 mod actual_types;
 pub(crate) mod generated;
 mod indent_aware_lexer;
+pub(crate) mod lexer_support;
 
 pub(crate) use actual_types::*;
 pub(crate) use indent_aware_lexer::IndentAwareYarnSpinnerLexer as YarnSpinnerLexer;

@@ -1,5 +1,5 @@
 #![allow(nonstandard_style)]
-// Generated from third-party/YarnSpinner/YarnSpinner.Compiler/Grammars/YarnSpinnerParser.g4 by ANTLR 4.13.2
+// Generated from YarnSpinnerParser.g4 by ANTLR 4.13.2
 use antlr4rust::tree::ParseTreeListener;
 use super::yarnspinnerparser::*;
 
@@ -420,16 +420,6 @@ fn enter_set_statement(&mut self, _ctx: &Set_statementContext<'input>) { }
  * @param ctx the parse tree
  */
 fn exit_set_statement(&mut self, _ctx: &Set_statementContext<'input>) { }
-/**
- * Enter a parse tree produced by {@link YarnSpinnerParser#call_statement}.
- * @param ctx the parse tree
- */
-fn enter_call_statement(&mut self, _ctx: &Call_statementContext<'input>) { }
-/**
- * Exit a parse tree produced by {@link YarnSpinnerParser#call_statement}.
- * @param ctx the parse tree
- */
-fn exit_call_statement(&mut self, _ctx: &Call_statementContext<'input>) { }
 /**
  * Enter a parse tree produced by {@link YarnSpinnerParser#command_statement}.
  * @param ctx the parse tree

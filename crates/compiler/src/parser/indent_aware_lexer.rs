@@ -130,6 +130,7 @@ where
     &'input LocalTokenFactory<'input>: Default,
 {
     pub fn new(input: Input, file_name: String) -> Self {
+        super::lexer_support::set_in_when_clause(false);
         IndentAwareYarnSpinnerLexer {
             file_name,
             base: GeneratedYarnSpinnerLexer::new(input),
@@ -154,7 +155,7 @@ where
             // Insert dedents before the end of the file, and then
             // enqueues the EOF.
             antlr4rust::token::TOKEN_EOF => self.handle_eof_token(current.clone()),
-            yarnspinnerlexer::SHORTCUT_ARROW => {
+            yarnspinnerlexer::SHORTCUT_ARROW | yarnspinnerlexer::LINE_GROUP_ARROW => {
                 self.pending_tokens.enqueue(current.clone());
                 self.line_contains_shortcut = true;
             }

@@ -460,14 +460,6 @@ impl<'a, 'input: 'a> YarnSpinnerParserVisitorCompat<'input> for CodeGenerationVi
         };
     }
 
-    fn visit_call_statement(&mut self, ctx: &Call_statementContext<'input>) -> Self::Return {
-        // Visit our function call, which will invoke the function
-        self.visit(ctx.function_call().unwrap().as_ref());
-        // [sic] TODO: if this function returns a value, it will be pushed onto
-        // the stack, but there's no way for the compiler to know that, so
-        // the stack will not be tidied up. is there a way for that to work?
-    }
-
     /// semi-free form text that gets passed along to the game for things
     /// like <<turn fred left>> or <<unlockAchievement FacePlant>>
     fn visit_command_statement(&mut self, ctx: &Command_statementContext<'input>) -> Self::Return {

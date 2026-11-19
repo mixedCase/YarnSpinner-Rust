@@ -24,6 +24,9 @@ pub struct Program {
         ::prost::alloc::string::String,
         Operand,
     >,
+    /// The version of the Yarn Spinner language that this program was compiled under.
+    #[prost(int32, tag = "4")]
+    pub language_version: i32,
 }
 /// A collection of instructions
 use crate::prelude::*;

@@ -1,4 +1,4 @@
-// Generated from third-party/YarnSpinner/YarnSpinner.Compiler/Grammars/YarnSpinnerParser.g4 by ANTLR 4.13.2
+// Generated from YarnSpinnerParser.g4 by ANTLR 4.13.2
 
 use super::yarnspinnerparser::*;
 use antlr4rust::tree::ParseTreeListener;
@@ -462,18 +462,6 @@ pub trait YarnSpinnerParserBaseListener<'input>:
      * @param ctx the parse tree
      */
     fn exit_set_statement(&mut self, _ctx: &Set_statementContext<'input>) {}
-
-
-    /**
-     * Enter a parse tree produced by \{@link YarnSpinnerParserBaseParser#s}.
-     * @param ctx the parse tree
-     */
-    fn enter_call_statement(&mut self, _ctx: &Call_statementContext<'input>) {}
-    /**
-     * Exit a parse tree produced by \{@link  YarnSpinnerParserBaseParser#s}.
-     * @param ctx the parse tree
-     */
-    fn exit_call_statement(&mut self, _ctx: &Call_statementContext<'input>) {}
 
 
     /**

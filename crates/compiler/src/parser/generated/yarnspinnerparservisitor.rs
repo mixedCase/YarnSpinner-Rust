@@ -1,5 +1,5 @@
 #![allow(nonstandard_style)]
-// Generated from third-party/YarnSpinner/YarnSpinner.Compiler/Grammars/YarnSpinnerParser.g4 by ANTLR 4.13.2
+// Generated from YarnSpinnerParser.g4 by ANTLR 4.13.2
 use antlr4rust::tree::{ParseTreeVisitor,ParseTreeVisitorCompat};
 use super::yarnspinnerparser::*;
 
@@ -253,12 +253,6 @@ pub trait YarnSpinnerParserVisitor<'input>: ParseTreeVisitor<'input,YarnSpinnerP
 	 * @param ctx the parse tree
 	 */
 	fn visit_set_statement(&mut self, ctx: &Set_statementContext<'input>) { self.visit_children(ctx) }
-
-	/**
-	 * Visit a parse tree produced by {@link YarnSpinnerParser#call_statement}.
-	 * @param ctx the parse tree
-	 */
-	fn visit_call_statement(&mut self, ctx: &Call_statementContext<'input>) { self.visit_children(ctx) }
 
 	/**
 	 * Visit a parse tree produced by {@link YarnSpinnerParser#command_statement}.
@@ -704,14 +698,6 @@ pub trait YarnSpinnerParserVisitorCompat<'input>:ParseTreeVisitorCompat<'input, 
 		}
 
 	/**
-	 * Visit a parse tree produced by {@link YarnSpinnerParser#call_statement}.
-	 * @param ctx the parse tree
-	 */
-		fn visit_call_statement(&mut self, ctx: &Call_statementContext<'input>) -> Self::Return {
-			self.visit_children(ctx)
-		}
-
-	/**
 	 * Visit a parse tree produced by {@link YarnSpinnerParser#command_statement}.
 	 * @param ctx the parse tree
 	 */
@@ -1060,11 +1046,6 @@ where
 
 	fn visit_set_statement(&mut self, ctx: &Set_statementContext<'input>){
 		let result = <Self as YarnSpinnerParserVisitorCompat>::visit_set_statement(self, ctx);
-        *<Self as ParseTreeVisitorCompat>::temp_result(self) = result;
-	}
-
-	fn visit_call_statement(&mut self, ctx: &Call_statementContext<'input>){
-		let result = <Self as YarnSpinnerParserVisitorCompat>::visit_call_statement(self, ctx);
         *<Self as ParseTreeVisitorCompat>::temp_result(self) = result;
 	}
 

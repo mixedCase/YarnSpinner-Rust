@@ -1,5 +1,5 @@
 
-// Generated from third-party/YarnSpinner/YarnSpinner.Compiler/Grammars/YarnSpinnerParser.g4 by ANTLR 4.13.2
+// Generated from YarnSpinnerParser.g4 by ANTLR 4.13.2
 
 use antlr4rust::tree::ParseTreeVisitor;
 use super::yarnspinnerparser::*;
@@ -195,11 +195,6 @@ pub trait YarnSpinnerParserBaseVisitor<'input>:
 
 	// Visit a parse tree produced by YarnSpinnerParser#set_statement.
 	fn visit_set_statement(&mut self, ctx: &Set_statementContext<'input>) {
-            self.visit_children(ctx)
-        }
-
-	// Visit a parse tree produced by YarnSpinnerParser#call_statement.
-	fn visit_call_statement(&mut self, ctx: &Call_statementContext<'input>) {
             self.visit_children(ctx)
         }
 
