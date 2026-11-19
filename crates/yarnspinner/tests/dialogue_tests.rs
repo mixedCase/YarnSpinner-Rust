@@ -281,7 +281,7 @@ fn test_selecting_option_from_inside_option_callback() {
         .compile()
         .unwrap();
 
-    let mut test_base = TestBase::new()
+    TestBase::new()
         .with_test_plan(
             TestPlan::new()
                 .expect_option("option 1")
@@ -289,62 +289,6 @@ fn test_selecting_option_from_inside_option_callback() {
                 .then_select(0)
                 .expect_line("final line"),
         )
-        .with_compilation(result);
-    test_base.dialogue.set_node("Start").unwrap();
-
-    #[cfg(feature = "bevy")]
-    let mut world = World::default();
-
-    while test_base.dialogue.can_continue() {
-        #[cfg(feature = "bevy")]
-        let events = test_base.dialogue.continue_with_world(&mut world);
-        #[cfg(not(feature = "bevy"))]
-        let events = test_base.dialogue.continue_();
-        let events =
-            events.unwrap_or_else(|e| panic!("Encountered error while running dialogue: {e}"));
-        for event in events {
-            match event {
-                DialogueEvent::Line(line) => {
-                    let test_plan = test_base.test_plan.as_mut().unwrap();
-                    test_plan.next(&mut test_base.dialogue);
-
-                    let expected_step = test_plan.next_expected_step;
-                    let expected_value = test_plan.next_step_value.clone().unwrap();
-                    assert_eq!(ExpectedStepType::Line, expected_step);
-                    assert_eq!(StepValue::String(line.text), expected_value);
-                }
-                DialogueEvent::Options(options) => {
-                    test_base
-                        .test_plan
-                        .as_mut()
-                        .unwrap()
-                        .next(&mut test_base.dialogue);
-                    let actual_options: Vec<_> = options
-                        .into_iter()
-                        .map(|o| ProcessedOption {
-                            line: o.line.text,
-                            enabled: o.is_available,
-                        })
-                        .collect();
-                    let test_plan = test_base.test_plan.as_ref().unwrap();
-                    let next_expected_options = test_plan.next_expected_options.clone();
-                    assert_eq!(next_expected_options, actual_options);
-
-                    let expected_step = test_plan.next_expected_step;
-                    assert_eq!(ExpectedStepType::Select, expected_step);
-                    test_base.dialogue.set_selected_option(OptionId(0)).unwrap();
-                }
-                DialogueEvent::DialogueComplete => {
-                    let test_plan = test_base.test_plan.as_mut().unwrap();
-                    test_plan.next(&mut test_base.dialogue);
-                    let expected_step = test_plan.next_expected_step;
-                    assert_eq!(ExpectedStepType::Stop, expected_step);
-                }
-                DialogueEvent::Command(_)
-                | DialogueEvent::NodeComplete(_)
-                | DialogueEvent::NodeStart(_)
-                | DialogueEvent::LineHints(_) => {}
-            }
-        }
-    }
+        .with_compilation(result)
+        .run_standard_testcase();
 }

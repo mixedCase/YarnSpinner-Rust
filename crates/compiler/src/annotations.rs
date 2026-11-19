@@ -87,7 +87,8 @@ impl Annotations {
 pub(crate) struct SourceFile<'input> {
     pub(crate) index: usize,
     pub(crate) name: String,
-    pub(crate) source: &'input str,
+    /// The lines of the source text, for showing the surroundings of a diagnostic
+    pub(crate) lines: std::rc::Rc<Vec<&'input str>>,
     pub(crate) parsed: FileParseResult<'input>,
 }
 
@@ -98,9 +99,19 @@ impl<'input> SourceFile<'input> {
 
     /// An empty diagnostic that points at the given range of this file.
     pub(crate) fn diagnostic_at_range(&self, range: Range<Position>) -> Diagnostic {
+        // The lines that the range covers, plus two lines above and below
+        let first_line = range.start.line.saturating_sub(2);
+        let last_line = (range.end.line + 2).min(self.lines.len().saturating_sub(1));
+        let context = self
+            .lines
+            .get(first_line..=last_line)
+            .unwrap_or_default()
+            .join("\n");
         Diagnostic::from_message("")
             .with_file_name(&self.name)
-            .with_range_in_source(range, self.source)
+            .with_range(range)
+            .with_context(context)
+            .with_start_line(first_line)
     }
 
     /// An empty diagnostic that points at the given context.

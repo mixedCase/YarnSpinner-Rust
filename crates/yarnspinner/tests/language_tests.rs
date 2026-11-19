@@ -175,8 +175,12 @@ fn test_invalid_characters_in_node_title() {
     assert!(result.is_err());
 }
 
+/// Runs every upstream test case: files with a `.testplan` must compile and behave as the plan says,
+/// files without one must fail to compile.
 #[test]
 fn test_sources() {
+    let mut failures = Vec::new();
+    let mut passed = 0;
     for file in [
         "TestCases",
         "TestCases/ParseFailures",
@@ -187,44 +191,66 @@ fn test_sources() {
     .flat_map(TestBase::file_sources)
     {
         println!("INFO: Loading file {}", file.display());
-        let path = test_data_path().join(&file);
-        let test_plan = path.with_extension("testplan");
+        let result = std::panic::catch_unwind(|| run_test_source(&file));
+        match result {
+            Ok(()) => passed += 1,
+            Err(_) => failures.push(file.display().to_string()),
+        }
+    }
+    failures.sort();
+    assert!(
+        failures.is_empty(),
+        "{passed} upstream test cases passed, {} failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
 
-        let test_base = TestBase::default().extend_library(|library| {
-            library.add_function("add_three_operands", |a: i32, b: i32, c: i32| a + b + c);
-        });
-        let result = Compiler::default()
-            .read_file(&path)
-            .extend_library(test_base.dialogue.library().clone())
-            .compile();
+fn run_test_source(file: &std::path::Path) {
+    let path = test_data_path().join(file);
+    let test_plan = path.with_extension("testplan");
 
-        if !test_plan.exists() {
-            // No test plan for this file exists, which indicates that
-            // the file is not expected to compile. We'll actually make
-            // it a test failure if it _does_ compile.
-            assert!(
-                result.is_err(),
-                "{} is expected to have compile errors",
-                file.display()
-            );
-        } else {
-            let compilation = result.unwrap();
-            let mut test_base = test_base
-                .read_test_plan(test_plan)
-                .with_compilation(compilation)
-                .extend_library(|library| {
-                    library
-                        .add_function("dummy_bool", || true)
-                        .add_function("dummy_number", || 1)
-                        .add_function("dummy_string", || "string".to_owned());
-                });
+    let test_base = TestBase::default().extend_library(|library| {
+        library
+            .add_function("add_three_operands", |a: i32, b: i32, c: i32| a + b + c)
+            .add_function("set_objective_complete", |_objective: String| true)
+            .add_function("is_objective_active", |_objective: String| true)
+            .add_function("get_quest_status", |_quest_name: String| "InProgress".to_owned())
+            .add_function("adds_two", |a: i32| a + 2)
+            .add_function("adds_one", |a: i32| a + 1)
+            .add_function("adds_all", |a: i32, b: i32, rest: Vec<i32>| {
+                a + b + rest.iter().sum::<i32>()
+            })
+            // three basic dummy functions that can be used to test inference
+            .add_function("dummy_bool", || true)
+            .add_function("dummy_number", || 1)
+            .add_function("dummy_string", || "string".to_owned());
+    });
+    let result = Compiler::default()
+        .read_file(&path)
+        .extend_library(test_base.dialogue.library().clone())
+        .compile();
 
-            // If this file contains a Start node, run the test case
-            // (otherwise, we're just testing its parseability, which
-            // we did in the last line)
-            if test_base.dialogue.node_exists("Start") {
-                test_base.run_standard_testcase();
-            }
+    if !test_plan.exists() {
+        // No test plan for this file exists, which indicates that
+        // the file is not expected to compile. We'll actually make
+        // it a test failure if it _does_ compile.
+        assert!(
+            result.is_err(),
+            "{} is expected to have compile errors",
+            file.display()
+        );
+    } else {
+        let compilation = result.unwrap();
+        let mut test_base = test_base
+            .read_test_plan(test_plan)
+            .with_compilation(compilation);
+
+        // If this file contains a Start node, run the test case
+        // (otherwise, we're just testing its parseability, which
+        // we did in the last line)
+        if test_base.dialogue.node_exists("Start") {
+            test_base.run_standard_testcase();
         }
     }
 }

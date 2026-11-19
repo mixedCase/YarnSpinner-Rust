@@ -71,44 +71,6 @@ impl Diagnostic {
         self
     }
 
-    /// Like [`Diagnostic::with_parser_context`], but for a range of tokens.
-    pub(crate) fn with_tokens<'input>(
-        self,
-        start: &impl Token,
-        stop: &impl Token,
-        token_stream: &ActualTokenStream<'input>,
-    ) -> Self {
-        use antlr4rust::token_stream::TokenStream;
-        self.with_range_in_source(token_range(start, stop), &token_stream.get_all_text())
-    }
-
-    /// Sets the range and derives the context shown when printing from the source text.
-    pub(crate) fn with_range_in_source(self, range: Range<Position>, source: &str) -> Self {
-        let lines_around = lines_around_range(source, &range, 2);
-        self.with_range(range)
-            .with_context(lines_around.lines)
-            .with_start_line(lines_around.first_line)
-    }
-
-    pub(crate) fn with_parser_context<'input, T>(
-        self,
-        ctx: &T,
-        token_stream: &ActualTokenStream<'input>,
-    ) -> Self
-    where
-        T: ParserRuleContextExt<'input>,
-    <<<<T as CustomRuleContext<'input>>::TF as TokenFactory<'input>>::Inner as Token>::Data as ToOwned>::Owned:
-        Into<String>
-{
-        let lines_above_and_below_offending_line = 2;
-        let lines_around = ctx.get_lines_around(token_stream, lines_above_and_below_offending_line);
-        let range = ctx.range();
-
-        self.with_range(range)
-            .with_context(lines_around.lines)
-            .with_start_line(lines_around.first_line)
-    }
-
     pub(crate) fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
         self.file_name = Some(file_name.into());
         self
@@ -260,19 +222,3 @@ pub(crate) fn token_range(
     start_position..stop_position
 }
 
-/// The lines of `source` that `range` covers, plus `surrounding_lines` lines above and below.
-fn lines_around_range(
-    source: &str,
-    range: &Range<Position>,
-    surrounding_lines: usize,
-) -> LinesAroundResult {
-    let first_line = range.start.line.saturating_sub(surrounding_lines);
-    let line_count = range.end.line.saturating_sub(first_line) + surrounding_lines + 1;
-    let lines = source
-        .lines()
-        .skip(first_line)
-        .take(line_count)
-        .collect::<Vec<_>>()
-        .join("\n");
-    LinesAroundResult { lines, first_line }
-}

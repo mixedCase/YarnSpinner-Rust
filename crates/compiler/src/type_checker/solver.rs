@@ -11,7 +11,6 @@
 use super::types::*;
 use crate::diagnostic_descriptors as descriptors;
 use crate::prelude::*;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Produces the code and message of the diagnostic for a failed constraint, given what the solver found out.
@@ -295,35 +294,46 @@ pub(crate) fn try_solve(
         other => vec![other],
     };
 
-    let mut successful_substitutions = Vec::new();
+    // ## Implementation note
+    // The original clones the substitution for every candidate. With thousands of variables, that
+    // gets slow. Unification only ever adds entries, so we record what each candidate added
+    // and remove it again before trying the next one.
+    let mut successful_additions: Vec<Vec<(Rc<str>, Ty)>> = Vec::new();
     for candidate in alternatives {
-        let mut candidate_substitution = substitution.clone();
         let terms = match candidate {
             Formula::True => vec![],
             Formula::False => continue,
             Formula::And(terms) => terms,
             other => vec![other],
         };
+        let mut added = Vec::new();
         let is_solved = terms.iter().all(|term| match term {
-            Formula::Eq(a, b) => try_unify(a, b, &mut candidate_substitution),
+            Formula::Eq(a, b) => try_unify(a, b, substitution, &mut added),
             Formula::True => true,
             Formula::False => false,
             other => unreachable!("Internal error: didn't expect to see {other:?} in a solver candidate"),
         });
+        let additions: Vec<_> = added
+            .into_iter()
+            .map(|variable| {
+                let ty = substitution.remove(&variable).unwrap();
+                (variable, ty)
+            })
+            .collect();
         if is_solved {
-            successful_substitutions.push(candidate_substitution);
+            successful_additions.push(additions);
         }
     }
 
-    match successful_substitutions.len() {
+    match successful_additions.len() {
         0 => false,
         1 => {
-            *substitution = successful_substitutions.remove(0);
+            substitution.extend(successful_additions.remove(0));
             true
         }
         _ => {
-            if let Some(merged) = try_merge_substitutions(&successful_substitutions) {
-                *substitution = merged;
+            if let Some(merged) = try_merge_substitutions(&successful_additions) {
+                substitution.extend(merged);
                 true
             } else {
                 // Multiple substitutions apply, so the type is ambiguous
@@ -343,14 +353,17 @@ pub(crate) fn try_solve(
 }
 
 /// When several substitutions solve the constraints, the most specific type wins for each variable.
-fn try_merge_substitutions(substitutions: &[Substitution]) -> Option<Substitution> {
-    let mut merged: HashMap<Rc<str>, Vec<Ty>> = HashMap::new();
-    for substitution in substitutions {
-        for (variable, ty) in substitution {
-            let candidates = merged.entry(variable.clone()).or_default();
-            if !candidates.contains(ty) {
-                candidates.push(ty.clone());
+/// Takes what each successful candidate added to the common substitution, and returns what to add to it.
+fn try_merge_substitutions(additions: &[Vec<(Rc<str>, Ty)>]) -> Option<Vec<(Rc<str>, Ty)>> {
+    let mut merged: Vec<(Rc<str>, Vec<Ty>)> = Vec::new();
+    for (variable, ty) in additions.iter().flatten() {
+        match merged.iter_mut().find(|(name, _)| name == variable) {
+            Some((_, candidates)) => {
+                if !candidates.contains(ty) {
+                    candidates.push(ty.clone());
+                }
             }
+            None => merged.push((variable.clone(), vec![ty.clone()])),
         }
     }
     let depth = |ty: &Ty| if ty.is_var() { usize::MAX } else { ty.type_depth() };
@@ -365,37 +378,49 @@ fn try_merge_substitutions(substitutions: &[Substitution]) -> Option<Substitutio
         .collect()
 }
 
-pub(crate) fn try_unify(x: &Ty, y: &Ty, substitution: &mut Substitution) -> bool {
+/// Makes `x` and `y` equal by extending the substitution. The variables that were added are appended to `added`.
+pub(crate) fn try_unify(
+    x: &Ty,
+    y: &Ty,
+    substitution: &mut Substitution,
+    added: &mut Vec<Rc<str>>,
+) -> bool {
     match (x, y) {
         _ if x == y => true,
         (Ty::Var(variable), other) | (other, Ty::Var(variable)) => {
-            unify_variable(variable, other, substitution)
+            unify_variable(variable, other, substitution, added)
         }
         (Ty::Function(x), Ty::Function(y)) => {
             x.parameters.len() == y.parameters.len()
                 && x.parameters
                     .iter()
                     .zip(&y.parameters)
-                    .all(|(x, y)| try_unify(x, y, substitution))
-                && try_unify(&x.return_type, &y.return_type, substitution)
+                    .all(|(x, y)| try_unify(x, y, substitution, added))
+                && try_unify(&x.return_type, &y.return_type, substitution, added)
         }
         _ => false,
     }
 }
 
-fn unify_variable(variable: &Rc<str>, term: &Ty, substitution: &mut Substitution) -> bool {
+fn unify_variable(
+    variable: &Rc<str>,
+    term: &Ty,
+    substitution: &mut Substitution,
+    added: &mut Vec<Rc<str>>,
+) -> bool {
     if let Some(known) = substitution.get(variable).cloned() {
-        return try_unify(&known, term, substitution);
+        return try_unify(&known, term, substitution, added);
     }
     if let Ty::Var(term_variable) = term
         && let Some(known) = substitution.get(term_variable).cloned()
     {
-        return try_unify(&Ty::Var(variable.clone()), &known, substitution);
+        return try_unify(&Ty::Var(variable.clone()), &known, substitution, added);
     }
     if occurs_check(variable, term, substitution) {
         return false;
     }
     substitution.insert(variable.clone(), term.clone());
+    added.push(variable.clone());
     true
 }
 

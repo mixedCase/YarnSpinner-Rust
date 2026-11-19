@@ -28,7 +28,6 @@ use yarnspinner::runtime::*;
 mod extensions;
 mod logger;
 mod paths;
-mod step;
 mod test_plan;
 mod text_provider;
 use logger::*;
@@ -37,7 +36,7 @@ use yarnspinner::log::{self, LevelFilter, SetLoggerError};
 
 pub mod prelude {
     #[allow(unused_imports)] // False positive
-    pub use crate::test_base::{extensions::*, paths::*, step::*, test_plan::*, *};
+    pub use crate::test_base::{extensions::*, paths::*, test_plan::*, *};
 }
 
 pub fn init_logger(runtime_errors_cause_failure: Arc<AtomicBool>) -> Result<(), SetLoggerError> {
@@ -51,6 +50,8 @@ pub struct TestBase {
     pub test_plan: Option<TestPlan>,
     pub string_table: SharedTextProvider,
     pub variable_storage: MemoryVariableStorage,
+    /// The string table of the compilation, for looking up the metadata of lines
+    pub string_infos: HashMap<LineId, StringInfo>,
     runtime_errors_cause_failure: Arc<AtomicBool>,
 }
 
@@ -74,12 +75,15 @@ impl Default for TestBase {
                 assert!(is_truthy);
                 true
             });
+        // Like the original test suite, we don't use the random default strategy
+        dialogue.set_content_saliency_strategy(Box::new(BestLeastRecentlyViewedSaliencyStrategy));
 
         Self {
             dialogue,
             runtime_errors_cause_failure,
             variable_storage,
             string_table,
+            string_infos: Default::default(),
             test_plan: Default::default(),
         }
     }
@@ -132,6 +136,7 @@ impl TestBase {
 
     #[must_use]
     pub fn with_string_table(mut self, string_table: HashMap<LineId, StringInfo>) -> Self {
+        self.string_infos.clone_from(&string_table);
         let string_table: HashMap<_, _> = string_table
             .into_iter()
             .map(|(id, info)| (id, info.text))
@@ -146,141 +151,174 @@ impl TestBase {
 
     /// Executes the named node, and checks any assertions made during
     /// execution. Fails the test if an assertion made in Yarn fails.
+    /// Runs the test plan: every run starts the dialogue, lets it run to its end
+    /// and compares what happened with the expectations of the run.
     pub fn run_standard_testcase(&mut self) -> &mut Self {
-        self.dialogue.set_node("Start").unwrap();
+        let test_plan = self.test_plan.clone().unwrap_or_else(TestPlan::new);
+        for run in &test_plan.runs {
+            self.evaluate_run(run, self.test_plan.is_some());
+        }
+        self
+    }
 
-        #[cfg(feature = "bevy")]
-        let mut world = World::default();
-
-        if let Some(test_plan) = self.test_plan.as_mut() {
-            while test_plan
-                .current_step()
-                .is_some_and(|step| !step.expected_step_type.is_blocking())
-            {
-                test_plan.next(&mut self.dialogue);
+    fn evaluate_run(&mut self, run: &Run, check_expectations: bool) {
+        // Apply the actions of the run before starting it
+        let mut start_node = run.start_node.clone();
+        let mut selections = std::collections::VecDeque::new();
+        for step in run.steps.iter().filter(|step| step.is_action()) {
+            match step {
+                Step::Select(selection) => selections.push_back(*selection),
+                Step::SetBool(variable, value) => self.set_variable(variable, (*value).into()),
+                Step::SetNumber(variable, value) => self.set_variable(variable, (*value).into()),
+                Step::SetSaliency(mode) => {
+                    let strategy: Box<dyn ContentSaliencyStrategy> = match mode.as_str() {
+                        "first" => Box::new(FirstSaliencyStrategy),
+                        "best" => Box::new(BestSaliencyStrategy),
+                        "best_least_recently_seen" => {
+                            Box::new(BestLeastRecentlyViewedSaliencyStrategy)
+                        }
+                        other => panic!("Unknown saliency strategy '{other}'"),
+                    };
+                    self.dialogue.set_content_saliency_strategy(strategy);
+                }
+                Step::JumpToNode(node) => start_node.clone_from(node),
+                _ => unreachable!(),
             }
         }
 
+        // Run the dialogue and remember what happened
+        let mut moments = std::collections::VecDeque::new();
+        self.dialogue.set_node(start_node).unwrap();
+        #[cfg(feature = "bevy")]
+        let mut world = World::default();
         while self.dialogue.can_continue() {
             #[cfg(feature = "bevy")]
-            let events = self
-                .dialogue
-                .continue_with_world(&mut world)
-                .unwrap_or_else(|e| panic!("Encountered error while running dialogue: {e}"));
+            let events = self.dialogue.continue_with_world(&mut world);
             #[cfg(not(feature = "bevy"))]
-            let events = self
-                .dialogue
-                .continue_()
-                .unwrap_or_else(|e| panic!("Encountered error while running dialogue: {e}"));
+            let events = self.dialogue.continue_();
+            let events =
+                events.unwrap_or_else(|e| panic!("Encountered error while running dialogue: {e}"));
 
             for event in events {
                 match event {
                     DialogueEvent::Line(line) => {
                         println!("Line: {}", line.text);
-                        let Some(test_plan) = self.test_plan.as_mut() else {
-                            continue;
-                        };
-                        test_plan.next(&mut self.dialogue);
-
-                        assert_eq!(
-                            ExpectedStepType::Line,
-                            test_plan.next_expected_step,
-                            "Received line {}, but was expecting a {:?}",
-                            line.text,
-                            test_plan.next_expected_step
-                        );
-                        assert_eq!(
-                            test_plan.next_step_value,
-                            Some(StepValue::String(line.text))
-                        );
+                        moments.push_back(Step::ExpectLine {
+                            hashtags: self.metadata(&line.id),
+                            text: Some(line.text),
+                        });
                     }
                     DialogueEvent::Options(options) => {
                         println!("Options:");
-
-                        let options: Vec<_> = options
-                            .into_iter()
-                            .map(|option| ProcessedOption {
-                                line: option.line.text,
+                        for option in options {
+                            println!(" - {} (available: {})", option.line.text, option.is_available);
+                            moments.push_back(Step::ExpectOption {
+                                hashtags: self.metadata(&option.line.id),
+                                text: option.line.text,
                                 enabled: option.is_available,
-                            })
-                            .collect();
-                        for option in &options {
-                            println!(" - {} (available: {})", option.line, option.enabled);
+                            });
                         }
-                        let Some(test_plan) = self.test_plan.as_mut() else {
-                            continue;
+                        // Without a test plan, we always pick the first option
+                        let selection = match selections.pop_front() {
+                            Some(selection) => selection,
+                            None if !check_expectations => Some(0),
+                            None => panic!("Received options, but the test plan has no selection left"),
                         };
-
-                        test_plan.next(&mut self.dialogue);
-                        assert_eq!(
-                            ExpectedStepType::Select,
-                            test_plan.next_expected_step,
-                            "Received {} options, but wasn't expecting them (was expecting {:?})",
-                            options.len(),
-                            test_plan.next_expected_step
-                        );
-
-                        assert_eq!(test_plan.next_expected_options, options);
-
-                        if let Some(StepValue::Number(selection)) = test_plan.next_step_value {
-                            let selection = selection - 1; // 1-indexed for test plan, 0-indexed in the code
-                            println!("[Selecting option {selection}]");
-                            self.dialogue
+                        println!("[Selecting option {selection:?}]");
+                        match selection {
+                            Some(selection) => self
+                                .dialogue
                                 .set_selected_option(OptionId(selection))
-                                .unwrap();
-                        } else {
-                            println!("[Selecting option 0 implicitly]");
-                            self.dialogue.set_selected_option(OptionId(0)).unwrap();
-                        }
+                                .unwrap(),
+                            None => self.dialogue.set_no_option_selected().unwrap(),
+                        };
                     }
                     DialogueEvent::Command(command) => {
                         println!("Command: {}", command.raw);
-                        let Some(test_plan) = self.test_plan.as_mut() else {
-                            continue;
-                        };
-
-                        test_plan.next(&mut self.dialogue);
-                        assert_eq!(
-                            ExpectedStepType::Command,
-                            test_plan.next_expected_step,
-                            "Received command {}, but wasn't expecting to select one (was expecting {:?})",
-                            command.raw,
-                            test_plan.next_expected_step
-                        );
-
-                        // We don't need to get the composed string for a
-                        // command because it's been done for us in the
-                        // virtual machine. The VM can do this because
-                        // commands are not localised, so we don't need to
-                        // refer to the string table to get the text.
-                        assert_eq!(
-                            test_plan.next_step_value,
-                            Some(StepValue::String(command.raw))
-                        );
+                        // We don't need to get the composed string for a command because it's been
+                        // done for us in the virtual machine: commands are not localised.
+                        moments.push_back(Step::ExpectCommand(command.raw));
                     }
-                    DialogueEvent::NodeComplete(_) => {}
-                    DialogueEvent::NodeStart(_) => {}
-                    DialogueEvent::LineHints(_) => {}
-                    DialogueEvent::DialogueComplete => {
-                        let Some(test_plan) = self.test_plan.as_mut() else {
-                            continue;
-                        };
-
-                        test_plan.next(&mut self.dialogue);
-                        assert_eq!(
-                            ExpectedStepType::Stop,
-                            test_plan.next_expected_step,
-                            "Stopped dialogue, but wasn't expecting to select it (was expecting {:?})",
-                            test_plan.next_expected_step
-                        );
-                    }
+                    DialogueEvent::NodeComplete(_)
+                    | DialogueEvent::NodeStart(_)
+                    | DialogueEvent::LineHints(_)
+                    | DialogueEvent::DialogueComplete => {}
                 }
             }
         }
-        self
+        if !check_expectations {
+            return;
+        }
+
+        // Compare what happened with what was expected
+        for step in run.steps.iter().filter(|step| !step.is_action()) {
+            if *step == Step::ExpectStop {
+                break;
+            }
+            let moment = moments
+                .pop_front()
+                .unwrap_or_else(|| panic!("Expected {step:?}, but the dialogue was already over"));
+            let contains_all = |actual: &[String], expected: &[String]| {
+                for hashtag in expected {
+                    assert!(actual.contains(hashtag), "Expected {step:?}, got {moment:?}");
+                }
+            };
+            match (step, &moment) {
+                (
+                    Step::ExpectLine { text, hashtags },
+                    Step::ExpectLine {
+                        text: actual_text,
+                        hashtags: actual_hashtags,
+                    },
+                ) => {
+                    if text.is_some() {
+                        assert_eq!(text, actual_text);
+                    }
+                    contains_all(actual_hashtags, hashtags);
+                }
+                (
+                    Step::ExpectOption {
+                        text,
+                        hashtags,
+                        enabled,
+                    },
+                    Step::ExpectOption {
+                        text: actual_text,
+                        hashtags: actual_hashtags,
+                        enabled: actual_enabled,
+                    },
+                ) => {
+                    assert_eq!(text, actual_text);
+                    assert_eq!(enabled, actual_enabled, "Availability of option {text}");
+                    contains_all(actual_hashtags, hashtags);
+                }
+                (Step::ExpectCommand(text), Step::ExpectCommand(actual_text)) => {
+                    assert_eq!(text, actual_text);
+                }
+                _ => panic!("Expected {step:?}, got {moment:?}"),
+            }
+        }
+        assert!(
+            moments.is_empty(),
+            "The dialogue produced more content than expected: {moments:?}"
+        );
     }
 
-    /// Returns the list of .node and.Yarn files in the third-party/YarnSpinner/Tests/<subdir> directory.
+    fn set_variable(&mut self, variable: &str, value: YarnValue) {
+        println!("INFO: Variable {variable} set to {value}");
+        self.dialogue
+            .variable_storage_mut()
+            .set(variable.to_owned(), value)
+            .unwrap();
+    }
+
+    fn metadata(&self, line_id: &LineId) -> Vec<String> {
+        self.string_infos
+            .get(line_id)
+            .map(|info| info.metadata.clone())
+            .unwrap_or_default()
+    }
+
     pub fn file_sources(subdir: impl AsRef<Path>) -> impl Iterator<Item = PathBuf> {
         let subdir: PathBuf = PathBuf::from(subdir.as_ref());
         let path = test_data_path().join(&subdir);

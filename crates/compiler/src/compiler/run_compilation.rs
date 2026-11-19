@@ -97,7 +97,7 @@ fn compile_files<'input>(
         .map(|(index, (file, chars))| SourceFile {
             index,
             name: file.file_name.clone(),
-            source: &file.source,
+            lines: Rc::new(file.source.lines().collect()),
             parsed: parse_syntax_tree(file, chars, &mut diagnostics),
         })
         .collect();

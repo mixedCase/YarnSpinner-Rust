@@ -150,8 +150,8 @@ impl<'input> PrivateCommonTokenStreamExt<'input> for ActualTokenStream<'input> {
             return self.size() - 1;
         }
 
-        let tokens = self.get_tokens();
-        let mut token = &tokens[token_index as usize];
+        // Cloning all tokens here made declaring thousands of variables take a minute
+        let mut token = self.get(token_index);
         while token.get_channel() != channel {
             if token.get_token_type() == antlr4rust::int_stream::EOF || token_index < 0 {
                 return token_index;
@@ -159,7 +159,7 @@ impl<'input> PrivateCommonTokenStreamExt<'input> for ActualTokenStream<'input> {
 
             token_index += 1;
             // self.sync(i);
-            token = &tokens[token_index as usize];
+            token = self.get(token_index);
         }
 
         token_index
