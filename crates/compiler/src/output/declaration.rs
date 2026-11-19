@@ -67,6 +67,11 @@ pub struct Declaration {
     /// `<<declare $x = 1>>` would have a range referring to the `$x`
     /// symbol.
     pub range: Option<Range<Position>>,
+
+    /// Whether this is a smart variable: a variable declared with an expression instead of a constant value,
+    /// e.g. `<<declare $can_afford_pie = $money > 10>>`. Its value is computed whenever it is read
+    /// and it cannot be set. New in Yarn Spinner 3.
+    pub is_inline_expansion: bool,
 }
 
 impl Declaration {
@@ -90,6 +95,7 @@ impl Declaration {
             source_node_name: Default::default(),
             is_implicit: Default::default(),
             range: Default::default(),
+            is_inline_expansion: Default::default(),
         }
     }
 
@@ -163,6 +169,7 @@ impl Declaration {
             && self.source_file_name == other.source_file_name
             && self.source_node_name == other.source_node_name
             && self.is_implicit == other.is_implicit
+            && self.is_inline_expansion == other.is_inline_expansion
             && self.r#type == other.r#type
             && self.range == other.range
             && match (&self.default_value, &other.default_value) {
@@ -243,8 +250,3 @@ impl Display for DeclarationSource {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct DeferredTypeDiagnostic {
-    pub(crate) name: String,
-    pub(crate) diagnostic: Diagnostic,
-}

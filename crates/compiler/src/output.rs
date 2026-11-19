@@ -1,7 +1,6 @@
 //! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/da39c7195107d8211f21c263e4084f773b84eaff/YarnSpinner.Compiler/CompilationResult.cs>
 
-use crate::listeners::*;
-pub use crate::output::{debug_info::*, declaration::*, string_info::*, node_builder::*, instruction_address::*};
+pub use crate::output::{debug_info::*, declaration::*, string_info::*};
 use crate::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
@@ -11,8 +10,6 @@ use yarnspinner_core::prelude::*;
 mod debug_info;
 mod declaration;
 mod string_info;
-mod node_builder;
-mod instruction_address;
 
 /// The result of a compilation.
 ///
@@ -88,39 +85,10 @@ pub struct Compilation {
 
     /// The collection of [`DebugInfo`] objects for each node in [`Program`].
     pub debug_info: HashMap<String, DebugInfo>,
-}
 
-impl Compilation {
-    /// Combines multiple [`CompilationResult`] objects together into one object.
-    pub(crate) fn combine(
-        compilations: impl Iterator<Item = Compilation>,
-        string_table_manager: StringTableManager,
-    ) -> Self {
-        let mut programs = Vec::new();
-        let mut declarations = Vec::new();
-        let mut tags = HashMap::default();
-        let mut diagnostics = Vec::new();
-        let mut node_debug_infos = HashMap::default();
-
-        for compilation in compilations {
-            programs.push(compilation.program.unwrap());
-            declarations.extend(compilation.declarations);
-            tags.extend(compilation.file_tags);
-            diagnostics.extend(compilation.warnings);
-            node_debug_infos.extend(compilation.debug_info);
-        }
-        let combined_program = Program::combine(programs);
-        let contains_implicit_string_tags = string_table_manager.contains_implicit_string_tags();
-        Compilation {
-            program: combined_program,
-            string_table: string_table_manager.0,
-            declarations,
-            debug_info: node_debug_infos,
-            contains_implicit_string_tags,
-            file_tags: tags,
-            warnings: diagnostics,
-        }
-    }
+    /// The types that the scripts define, i.e. their enums. New in Yarn Spinner 3.
+    #[cfg_attr(feature = "bevy", reflect(ignore))]
+    pub user_defined_types: Vec<Type>,
 }
 
 /// A collection of [`Diagnostic`] objects that describe problems that occurred during compilation.

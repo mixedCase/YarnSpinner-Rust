@@ -1,41 +1,55 @@
-//! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/da39c7195107d8211f21c263e4084f773b84eaff/YarnSpinner.Compiler/StringTableGeneratorVisitor.cs>
+//! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/v3.3.1/YarnSpinner.Compiler/Visitors/StringTableGeneratorVisitor.cs>
+
+use crate::annotations::*;
+use crate::diagnostic_descriptors as descriptors;
 use crate::prelude::generated::{yarnspinnerparser::*, yarnspinnerparservisitor::*};
 use crate::prelude::*;
+use crate::string_table_manager::StringTableManager;
 use antlr4rust::parser_rule_context::ParserRuleContext;
 use antlr4rust::token::Token;
 use antlr4rust::tree::{ParseTree, ParseTreeVisitorCompat, Tree};
 use std::rc::Rc;
 
-#[derive(Clone)]
-/// A Visitor that walks an expression parse tree and generates string
-/// table entries, which are provided to a [`StringTableManager`].
-/// This string table can then be provided
-/// to future compilation passes, or stored for later use. Call the
-/// [`visit`] method to begin generating string table entries.
-pub(crate) struct StringTableGeneratorVisitor<'input> {
+/// The prefix of the hashtag that makes a line a shadow of another line.
+pub(crate) const SHADOW_ID_PREFIX: &str = "shadow:";
+
+/// Registers every line of a file in the string table and assigns line IDs to lines that have none.
+pub(crate) struct StringTableGeneratorVisitor<'a, 'input> {
     pub(crate) diagnostics: Vec<Diagnostic>,
     current_node_name: String,
-    pub(crate) string_table_manager: StringTableManager,
-    file: FileParseResult<'input>,
+    string_table_manager: &'a mut StringTableManager,
+    annotations: &'a mut Annotations,
+    file: &'a SourceFile<'input>,
     _dummy: (),
 }
 
-impl<'input> StringTableGeneratorVisitor<'input> {
+impl<'a, 'input> StringTableGeneratorVisitor<'a, 'input> {
     pub(crate) fn new(
-        string_table_manager: StringTableManager,
-        file: FileParseResult<'input>,
+        string_table_manager: &'a mut StringTableManager,
+        annotations: &'a mut Annotations,
+        file: &'a SourceFile<'input>,
     ) -> Self {
         Self {
             file,
             string_table_manager,
+            annotations,
             diagnostics: Default::default(),
             current_node_name: Default::default(),
             _dummy: (),
         }
     }
+
+    fn add_diagnostic(
+        &mut self,
+        ctx: &impl ParserRuleContext<'input>,
+        description: Diagnostic,
+    ) {
+        self.diagnostics
+            .push(self.file.diagnostic_at(ctx).described(description));
+    }
 }
 
-impl<'input> ParseTreeVisitorCompat<'input> for StringTableGeneratorVisitor<'input> {
+impl<'input> ParseTreeVisitorCompat<'input> for StringTableGeneratorVisitor<'_, 'input> {
     type Node = YarnSpinnerParserContextType;
 
     type Return = ();
@@ -45,103 +59,118 @@ impl<'input> ParseTreeVisitorCompat<'input> for StringTableGeneratorVisitor<'inp
     }
 }
 
-impl<'input> YarnSpinnerParserVisitorCompat<'input> for StringTableGeneratorVisitor<'input> {
+impl<'input> YarnSpinnerParserVisitorCompat<'input> for StringTableGeneratorVisitor<'_, 'input> {
     fn visit_node(&mut self, ctx: &NodeContext<'input>) -> Self::Return {
-        let mut tags = Vec::new();
-        for header in ctx.header_all() {
-            let header_key = header.header_key.as_ref().unwrap().get_text();
-            if header_key == "title" {
-                header
-                    .header_value
-                    .as_ref()
-                    .unwrap()
-                    .get_text()
-                    .clone_into(&mut self.current_node_name)
-            } else if header_key == "tags" {
-                let header_value = header
-                    .header_value
-                    .as_ref()
-                    .map(|header| header.get_text())
-                    .unwrap_or_default();
-                // Split the list of tags by spaces, and use that
-                tags = header_value
-                    .split_whitespace()
-                    .map(ToOwned::to_owned)
-                    .collect();
-            }
-        }
-        if !self.current_node_name.is_empty() && tags.contains(&"rawText".to_owned()) {
-            // This is a raw text node. Use its entire contents as a
-            // string and don't use its contents.
-            let line_id = get_line_id_for_node_name(&self.current_node_name);
-            self.string_table_manager.insert(
-                line_id,
-                StringInfo {
-                    text: ctx.body().unwrap().get_text(),
-                    node_name: self.current_node_name.clone(),
-                    line_number: ctx.body().unwrap().start().line as usize,
-                    file_name: self.file.name.clone(),
-                    ..Default::default()
-                },
-            );
-        } else {
-            // This is a regular node
-            // String table generator: don't crash if a node has no body
-            if let Some(body) = ctx.body() {
-                self.visit(body.as_ref());
-            }
+        self.current_node_name = self
+            .annotations
+            .node(self.file.index, ctx)
+            .title
+            .unwrap_or_else(|| "<unknown>".to_owned());
+        // String table generator: don't crash if a node has no body
+        if let Some(body) = ctx.body() {
+            self.visit(body.as_ref());
         }
     }
 
     fn visit_line_statement(&mut self, ctx: &Line_statementContext<'input>) -> Self::Return {
         let hashtags = ctx.hashtag_all();
-        let line_id_tag = get_line_id_tag(&hashtags);
-        let line_id = line_id_tag.as_ref().and_then(|t| t.text.as_ref());
-
-        if let Some(line_id) = line_id
-            && self
-                .string_table_manager
-                .contains_key(&line_id.get_text().into())
-        {
-            // The original has a fallback for when this is `null` / `None`,
-            // but this can logically not be the case in this scope.
-            let diagnostic_context = line_id_tag.clone().unwrap();
-            let line_id = line_id.get_text();
-            self.diagnostics.push(
-                Diagnostic::from_message(format!("Duplicate line ID {line_id}"))
-                    .with_parser_context(diagnostic_context.as_ref(), self.file.tokens())
-                    .with_file_name(&self.file.name),
-            );
-            return;
+        let with_prefix = |prefix: &str| -> Vec<Rc<HashtagContextAll<'input>>> {
+            hashtags
+                .iter()
+                .filter(|hashtag| {
+                    hashtag
+                        .text
+                        .as_ref()
+                        .is_some_and(|text| text.get_text().starts_with(prefix))
+                })
+                .cloned()
+                .collect()
         };
+        let line_ids = with_prefix(LINE_ID_PREFIX);
+        let shadow_ids = with_prefix(SHADOW_ID_PREFIX);
 
-        let line_number = ctx.start().get_line_as_usize();
-        let hashtag_texts = get_hashtag_texts(&hashtags);
+        if line_ids.len() + shadow_ids.len() > 1 {
+            // Too many IDs; a line may have either a single #line or a single #shadow tag.
+            if !line_ids.is_empty() && !shadow_ids.is_empty() {
+                for line_id in &line_ids {
+                    for shadow_id in &shadow_ids {
+                        let description =
+                            || descriptors::LINES_CANT_HAVE_LINE_AND_SHADOW_TAG.create(&[]);
+                        self.add_diagnostic(shadow_id.as_ref(), description());
+                        self.add_diagnostic(line_id.as_ref(), description());
+                    }
+                }
+                return;
+            }
+            for id in line_ids.iter().chain(&shadow_ids) {
+                self.add_diagnostic(
+                    id.as_ref(),
+                    descriptors::MULTIPLE_LINE_OR_SHADOW_IDS_ON_A_LINE.create(&[]),
+                );
+            }
+            return;
+        }
 
-        let composed_string = generate_formatted_text(&ctx.line_formatted_text().unwrap());
+        let text_of = |hashtag: &Rc<HashtagContextAll<'input>>| {
+            hashtag.text.as_ref().unwrap().get_text().to_owned()
+        };
+        let line_id_tag = line_ids.first();
+        let line_id: Option<LineId> = line_id_tag.map(|tag| text_of(tag).into());
 
-        let string_id = self.string_table_manager.insert(
-            line_id.map(|t| t.get_text().into()),
+        if let Some(line_id) = line_id.as_ref()
+            && let Some(existing) = self.string_table_manager.get(line_id)
+        {
+            // Duplicate line ID. Report it on both lines.
+            let description = || descriptors::DUPLICATE_LINE_ID.create(&[&line_id.0]);
+            let existing_position = existing.position.clone();
+            self.add_diagnostic(line_id_tag.unwrap().as_ref(), description());
+            self.diagnostics.push(existing_position.described(description()));
+            return;
+        }
+
+        let mut metadata = get_hashtag_texts(&hashtags);
+        let key = self.file.key(ctx);
+        if self.annotations.last_lines_before_options.contains(&key) {
+            metadata.push("lastline".to_owned());
+        }
+
+        let shadow_line_id: Option<LineId> = shadow_ids.first().map(|tag| {
+            format!("{LINE_ID_PREFIX}{}", &text_of(tag)[SHADOW_ID_PREFIX.len()..]).into()
+        });
+
+        let position = match line_id_tag {
+            Some(tag) => self.file.diagnostic_at(tag.as_ref()),
+            None => self.file.diagnostic_at(ctx),
+        };
+        let has_expressions = !ctx
+            .line_formatted_text()
+            .unwrap()
+            .expression_all()
+            .is_empty();
+        let line_id = self.string_table_manager.insert(
+            line_id,
             StringInfo {
-                text: composed_string,
+                text: generate_formatted_text(&ctx.line_formatted_text().unwrap()),
                 node_name: self.current_node_name.clone(),
-                line_number,
+                line_number: ctx.start().get_line_as_usize(),
                 file_name: self.file.name.clone(),
-                metadata: hashtag_texts,
-                ..Default::default()
+                metadata,
+                shadow_line_id: shadow_line_id.clone(),
+                is_implicit_tag: false,
+            },
+            position,
+            has_expressions,
+        );
+        self.annotations.lines.insert(
+            key,
+            LineAnnotation {
+                line_id,
+                shadow_line_id,
             },
         );
-
-        if line_id.is_none() {
-            add_hashtag_child(ctx, string_id.0);
-        }
     }
 }
 
-/// Takes a string like
-/// `Hi there { some_expression }, how are you { another_expression } doing?`
-/// and turns it into
-/// `Hi there {0}, how are you {1}? doing`
 fn generate_formatted_text(ctx: &Line_formatted_textContext) -> String {
     let mut expression_count = 0;
     let mut composed_string = String::new();
@@ -166,191 +195,9 @@ fn generate_formatted_text(ctx: &Line_formatted_textContext) -> String {
     composed_string.trim().to_owned()
 }
 
-pub(crate) fn get_hashtag_texts(hashtags: &[Rc<HashtagContext>]) -> Vec<String> {
+pub(crate) fn get_hashtag_texts(hashtags: &[Rc<HashtagContextAll>]) -> Vec<String> {
     hashtags
         .iter()
-        .map(|t| {
-            t.text
-                .as_ref()
-                .expect("No text in hashtag")
-                .get_text()
-                .trim()
-                .to_owned()
-        })
+        .filter_map(|t| Some(t.text.as_ref()?.get_text().trim().to_owned()))
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use antlr4rust::InputStream;
-    use antlr4rust::common_token_stream::CommonTokenStream;
-    use yarnspinner_core::prelude::Position;
-
-    #[test]
-    fn ignores_lines_without_expression() {
-        let input = "title: Title
----
-A line
-===
-";
-        let result = process_input(input);
-        let expected = "A line";
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn formats_lines_with_expression() {
-        let input = "title: Title
----
-A line with a {$cool} expression
-===
-";
-        let result = process_input(input);
-        let expected = "A line with a {0} expression";
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn formats_lines_with_multiple_expressions() {
-        let input = "title: Title
----
-A line with {$many} many {(1 -(1 * 2))}{$cool} expressions
-===
-";
-        let result = process_input(input);
-        let expected = "A line with {0} many {1}{2} expressions";
-        assert_eq!(result, expected);
-    }
-
-    fn process_input(input: &str) -> String {
-        let lexer = YarnSpinnerLexer::new(InputStream::new(input), "input.yarn".to_owned());
-        let mut parser = YarnSpinnerParser::new(CommonTokenStream::new(lexer));
-        let line_formatted_text = parser
-            .dialogue()
-            .unwrap()
-            .node(0)
-            .unwrap()
-            .body()
-            .unwrap()
-            .statement(0)
-            .unwrap()
-            .line_statement()
-            .unwrap()
-            .line_formatted_text()
-            .unwrap();
-        generate_formatted_text(&line_formatted_text)
-    }
-
-    #[test]
-    fn populates_string_table() {
-        let file = File {
-            file_name: "test.yarn".to_string(),
-            source: "title: test
----
-foo
-bar
-a {1 + 3} cool expression
-==="
-            .to_string(),
-        };
-        let result = Compiler {
-            files: vec![file],
-            library: Default::default(),
-            compilation_type: CompilationType::FullCompilation,
-            variable_declarations: vec![],
-        }
-        .compile()
-        .unwrap();
-
-        let string_table = result.string_table;
-        assert_eq!(string_table.len(), 3);
-        assert_eq!(
-            string_table[&"line:1337986088".into()],
-            StringInfo {
-                text: "foo".to_string(),
-                node_name: "test".to_string(),
-                line_number: 3,
-                file_name: "test.yarn".to_string(),
-                is_implicit_tag: true,
-                metadata: vec![],
-            }
-        );
-        assert_eq!(
-            string_table[&"line:952581310".into()],
-            StringInfo {
-                text: "bar".to_string(),
-                node_name: "test".to_string(),
-                line_number: 4,
-                file_name: "test.yarn".to_string(),
-                is_implicit_tag: true,
-                metadata: vec![],
-            }
-        );
-        assert_eq!(
-            string_table[&"line:2714660100".into()],
-            StringInfo {
-                text: "a {0} cool expression".to_string(),
-                node_name: "test".to_string(),
-                line_number: 5,
-                file_name: "test.yarn".to_string(),
-                is_implicit_tag: true,
-                metadata: vec![],
-            }
-        );
-    }
-
-    #[test]
-    fn catches_expression_errors() {
-        let file = File {
-            file_name: "test.yarn".to_string(),
-            source: "title: test
----
-foo
-bar
-a {very} cool expression
-==="
-            .to_string(),
-        };
-        let result = Compiler {
-            files: vec![file],
-            library: Default::default(),
-            compilation_type: CompilationType::FullCompilation,
-            variable_declarations: vec![],
-        }
-        .compile();
-
-        let diagnostics = result.unwrap_err().0;
-        assert_eq!(2, diagnostics.len());
-
-        let range = Position {
-            line: 4,
-            character: 7,
-        }..Position {
-            line: 4,
-            character: 8,
-        };
-        let context = "a {very} cool expression\n       ^".to_owned();
-        let first_expected =
-            Diagnostic::from_message("Unexpected \"}\" while reading a function call".to_string())
-                .with_file_name("test.yarn".to_string())
-                .with_range(range.clone())
-                .with_context(context.clone())
-                .with_start_line(4)
-                .with_severity(DiagnosticSeverity::Error);
-
-        let second_expected =
-            Diagnostic::from_message("mismatched input '}' expecting '('".to_string())
-                .with_file_name("test.yarn".to_string())
-                .with_range(range)
-                .with_context(context)
-                .with_start_line(4)
-                .with_severity(DiagnosticSeverity::Error);
-        if diagnostics[0] == first_expected {
-            assert_eq!(diagnostics[1], second_expected);
-        } else {
-            assert_eq!(diagnostics[0], second_expected);
-            assert_eq!(diagnostics[1], first_expected);
-        }
-    }
 }

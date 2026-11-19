@@ -47,6 +47,10 @@ pub struct Diagnostic {
 
     /// The line the context starts on.
     pub start_line: usize,
+
+    /// The stable code identifying the kind of diagnostic, e.g. `YS0050`.
+    /// Not set for a few diagnostics that only exist in this implementation.
+    pub code: Option<String>,
 }
 
 impl Diagnostic {
@@ -58,7 +62,32 @@ impl Diagnostic {
             context: Default::default(),
             severity: Default::default(),
             start_line: Default::default(),
+            code: Default::default(),
         }
+    }
+
+    pub(crate) fn with_code(mut self, code: impl Into<String>) -> Self {
+        self.code = Some(code.into());
+        self
+    }
+
+    /// Like [`Diagnostic::with_parser_context`], but for a range of tokens.
+    pub(crate) fn with_tokens<'input>(
+        self,
+        start: &impl Token,
+        stop: &impl Token,
+        token_stream: &ActualTokenStream<'input>,
+    ) -> Self {
+        use antlr4rust::token_stream::TokenStream;
+        self.with_range_in_source(token_range(start, stop), &token_stream.get_all_text())
+    }
+
+    /// Sets the range and derives the context shown when printing from the source text.
+    pub(crate) fn with_range_in_source(self, range: Range<Position>, source: &str) -> Self {
+        let lines_around = lines_around_range(source, &range, 2);
+        self.with_range(range)
+            .with_context(lines_around.lines)
+            .with_start_line(lines_around.first_line)
     }
 
     pub(crate) fn with_parser_context<'input, T>(
@@ -112,8 +141,9 @@ impl Display for Diagnostic {
         let level = match self.severity {
             DiagnosticSeverity::Error => Level::ERROR,
             DiagnosticSeverity::Warning => Level::WARNING,
+            DiagnosticSeverity::Info => Level::INFO,
         };
-        let report = level.primary_title(label).id("Y001").element(
+        let report = level.primary_title(label).id(self.code.as_deref().unwrap_or("YS0000")).element(
             Snippet::source(self.context.as_deref().unwrap_or("<unknown line>"))
                 .line_start(self.start_line + 1)
                 .path(self.file_name.as_deref())
@@ -196,6 +226,10 @@ pub enum DiagnosticSeverity {
     /// Warnings represent possible problems that the user should fix,
     /// but do not cause the compilation process to fail.
     Warning,
+
+    /// An informational diagnostic, like a variable that is declared but never used.
+    /// Reported alongside the warnings. New in Yarn Spinner 3.
+    Info,
 }
 
 impl fmt::Display for DiagnosticSeverity {
@@ -203,6 +237,42 @@ impl fmt::Display for DiagnosticSeverity {
         match self {
             DiagnosticSeverity::Error => f.write_str("Error"),
             DiagnosticSeverity::Warning => f.write_str("Warning"),
+            DiagnosticSeverity::Info => f.write_str("Info"),
         }
     }
+}
+
+/// The range from the start of `start` to the end of `stop`, with zero-based lines.
+pub(crate) fn token_range(
+    start: &(impl Token + ?Sized),
+    stop: &(impl Token + ?Sized),
+) -> Range<Position> {
+    let to_usize = |value: isize| usize::try_from(value).unwrap_or_default();
+    let stop_length = to_usize(stop.get_stop() as isize - stop.get_start() as isize + 1);
+    let start_position = Position {
+        line: to_usize(start.get_line() as isize).saturating_sub(1),
+        character: to_usize(start.get_column() as isize),
+    };
+    let stop_position = Position {
+        line: to_usize(stop.get_line() as isize).saturating_sub(1),
+        character: to_usize(stop.get_column() as isize) + stop_length,
+    };
+    start_position..stop_position
+}
+
+/// The lines of `source` that `range` covers, plus `surrounding_lines` lines above and below.
+fn lines_around_range(
+    source: &str,
+    range: &Range<Position>,
+    surrounding_lines: usize,
+) -> LinesAroundResult {
+    let first_line = range.start.line.saturating_sub(surrounding_lines);
+    let line_count = range.end.line.saturating_sub(first_line) + surrounding_lines + 1;
+    let lines = source
+        .lines()
+        .skip(first_line)
+        .take(line_count)
+        .collect::<Vec<_>>()
+        .join("\n");
+    LinesAroundResult { lines, first_line }
 }

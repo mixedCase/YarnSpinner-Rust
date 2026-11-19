@@ -16,29 +16,6 @@ use std::rc::Rc;
 use yarnspinner_core::prelude::*;
 use yarnspinner_core::types::FunctionType;
 
-pub(crate) fn get_line_id_tag<'a>(
-    hashtag_contexts: &[Rc<HashtagContextAll<'a>>],
-) -> Option<Rc<HashtagContextAll<'a>>> {
-    hashtag_contexts
-        .iter()
-        .find(|hashtag| {
-            let hashtag_text = hashtag
-                .text
-                .as_ref()
-                .expect("Hashtag held no text")
-                .get_text();
-            hashtag_text.starts_with(LINE_ID_PREFIX)
-        })
-        .cloned()
-}
-
-pub(crate) fn get_line_id<'a>(line: &Line_statementContext) -> LineId {
-    let line_id_tag = get_line_id_tag(&line.hashtag_all())
-        .expect_or_bug("Internal error: line should have an implicit or explicit line ID tag, but none was found.");
-    let line_id = line_id_tag.text.as_ref().unwrap().get_text().to_owned();
-    LineId(line_id)
-}
-
 pub(crate) fn parse_syntax_tree<'a, 'b: 'a>(
     file: &'b File,
     file_chars: &'a [u32],
@@ -81,10 +58,6 @@ pub(crate) fn parse_syntax_tree<'a, 'b: 'a>(
     FileParseResult::new(file_name, tree, Rc::new(parser))
 }
 
-pub(crate) fn get_line_id_for_node_name(name: &str) -> LineId {
-    format!("{LINE_ID_PREFIX}{name}").into()
-}
-
 pub(crate) fn get_comments_channel() -> i32 {
     yarnspinnerlexer::channelNames
         .iter()
@@ -104,9 +77,6 @@ pub(crate) fn get_comments_channel() -> i32 {
 /// If there are both doc comments preceding the declaration and on the same line,
 /// only the the latter will be returned.
 ///
-/// ## Implementation notes
-///
-/// The flag `allowCommentsAfter` was not ported because it was always set to `true` anyway.
 pub(crate) fn get_document_comments<'input>(
     tokens: &ActualTokenStream<'input>,
     context: &impl YarnSpinnerParserContext<
@@ -114,9 +84,13 @@ pub(crate) fn get_document_comments<'input>(
         TF = LocalTokenFactory<'input>,
         Ctx = YarnSpinnerParserContextType,
     >,
+    allow_comments_after: bool,
 ) -> String {
-    let subsequent_comments =
-        tokens.get_hidden_tokens_to_right(context.stop().get_token_index(), get_comments_channel());
+    let subsequent_comments = if allow_comments_after {
+        tokens.get_hidden_tokens_to_right(context.stop().get_token_index(), get_comments_channel())
+    } else {
+        Vec::new()
+    };
 
     let subsequent_doc_comment = subsequent_comments
         .iter()
@@ -159,47 +133,6 @@ pub(crate) fn get_document_comments<'input>(
     preceding_doc_comments.join(" ")
 }
 
-/// Not part of original implementation, but needed because we lack some convenience methods
-/// that the C# implementation of ANTLR would provide but antlr4rust does not.
-pub(crate) fn add_hashtag_child<'input>(
-    parent: &impl YarnSpinnerParserContext<'input>,
-    text: impl Into<String>,
-) {
-    let parent = parent.ref_to_rc();
-    let string_id_token = create_common_token(yarnspinnerlexer::HASHTAG_TEXT, text);
-    let invoking_state_according_to_original_implementation = 0;
-    // `new_with_text` was hacked into the generated parser. Also, `FooContextExt::new` is usually private...
-    let hashtag = HashtagContextExt::new_with_text(
-        Some(parent.clone()),
-        invoking_state_according_to_original_implementation,
-        string_id_token,
-    );
-    parent.add_child(hashtag);
-}
-
-pub(crate) trait ContextRefExt<'input> {
-    fn ref_to_rc(self) -> Rc<ActualParserContext<'input>>;
-}
-
-impl<'input, T> ContextRefExt<'input> for &T
-where
-    T: YarnSpinnerParserContext<'input> + ?Sized,
-{
-    fn ref_to_rc(self) -> Rc<ActualParserContext<'input>> {
-        self.get_children()
-            .filter_map(|child| child.get_parent())
-            .next()
-            .or_else(|| {
-                let interval = self.get_source_interval();
-                self.get_parent()
-                    .unwrap()
-                    .get_children()
-                    .find(|child| child.get_source_interval() == interval)
-            })
-            .unwrap()
-    }
-}
-
 /// Returns a collection of [`Declaration`] structs that
 /// describe the functions present in `library`.
 ///
@@ -209,29 +142,36 @@ where
 /// because Rust's type system already guarantees at compile-time that all registered
 /// functions are valid and compatible with Yarn.
 pub(crate) fn get_declarations_from_library(library: &Library) -> Vec<Declaration> {
-    let operators: HashSet<_> = Type::EXPLICITLY_CONSTRUCTABLE
-        .iter()
-        .flat_map(|r#type| {
-            r#type
-                .methods()
-                .names()
-                .map(|name| r#type.get_canonical_name_for_method(name))
-                .collect::<Vec<_>>()
-        })
-        .collect();
+    let operators: HashSet<_> = [
+        Type::Number,
+        Type::String,
+        Type::Boolean,
+        Type::Enum(Default::default()),
+    ]
+    .iter()
+    .flat_map(|r#type| {
+        r#type
+            .methods()
+            .names()
+            .map(|name| r#type.get_canonical_name_for_method(name))
+            .collect::<Vec<_>>()
+    })
+    .collect();
     library
         .iter()
-        // Operators are type checked by visitors instead
+        // Operators are type checked by the type checker itself
         .filter(|(name, _function)| !operators.contains(*name))
         .map(|(name, function)| {
             let mut function_type = FunctionType::default();
-            let parameters = function
-                .parameter_types()
-                .into_iter()
-                .map(|t| Type::try_from(t).unwrap())
-                .map(Some)
-                .collect();
-            function_type.parameters = parameters;
+            for parameter in function.parameter_types() {
+                if let Some(element_type) = Type::variadic_element_type(parameter) {
+                    // A trailing `Vec` parameter accepts any number of arguments
+                    function_type.variadic_parameter_type = Box::new(Some(element_type));
+                } else {
+                    // Types that have no Yarn equivalent, like optional parameters, accept anything
+                    function_type.add_parameter(Type::try_from(parameter).unwrap_or(Type::Any));
+                }
+            }
             let return_type = Type::try_from(function.return_type()).unwrap();
             function_type.set_return_type(return_type);
             Declaration::new(name, function_type).with_source_file_name(DeclarationSource::External)

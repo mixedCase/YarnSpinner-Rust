@@ -11,38 +11,6 @@ use yarnspinner_core::prelude::*;
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub(crate) struct HashableInterval(Interval);
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct KnownTypes(pub(crate) HashMap<HashableInterval, Type>);
-
-impl KnownTypes {
-    pub(crate) fn get<'input>(&self, ctx: &impl YarnSpinnerParserContext<'input>) -> Option<&Type> {
-        let hashable_interval = ctx.get_hashable_interval();
-        self.0.get(&hashable_interval)
-    }
-
-    pub(crate) fn get_mut<'input>(
-        &mut self,
-        ctx: &impl YarnSpinnerParserContext<'input>,
-    ) -> Option<&mut Type> {
-        let hashable_interval = ctx.get_hashable_interval();
-        self.0.get_mut(&hashable_interval)
-    }
-
-    pub(crate) fn insert<'input>(
-        &mut self,
-        ctx: &impl YarnSpinnerParserContext<'input>,
-        r#type: impl Into<Option<Type>>,
-    ) -> Option<Type> {
-        let r#type = r#type.into()?;
-        let hashable_interval = ctx.get_hashable_interval();
-        self.0.insert(hashable_interval, r#type)
-    }
-
-    pub(crate) fn extend(&mut self, other: Self) {
-        self.0.extend(other.0)
-    }
-}
-
 impl From<Interval> for HashableInterval {
     fn from(interval: Interval) -> Self {
         Self(interval)
@@ -82,20 +50,6 @@ impl DerefMut for HashableInterval {
     }
 }
 
-impl Deref for KnownTypes {
-    type Target = HashMap<HashableInterval, Type>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for KnownTypes {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 pub(crate) trait GetHashableInterval<'input>: ParserRuleContext<'input> {
     fn get_hashable_interval(&self) -> HashableInterval {
         // FIXME: The get_source_interval function only seems to return INVALID values.
@@ -108,4 +62,4 @@ pub(crate) trait GetHashableInterval<'input>: ParserRuleContext<'input> {
     }
 }
 
-impl<'input, T: ParserRuleContext<'input>> GetHashableInterval<'input> for T {}
+impl<'input, T: ParserRuleContext<'input> + ?Sized> GetHashableInterval<'input> for T {}

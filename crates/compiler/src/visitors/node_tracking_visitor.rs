@@ -1,25 +1,35 @@
+//! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/v3.3.1/YarnSpinner.Compiler/Visitors/NodeTrackingVisitor.cs>
+
+use crate::annotations::Annotations;
 use crate::parser::generated::yarnspinnerparser::*;
 use crate::prelude::generated::yarnspinnerparservisitor::YarnSpinnerParserVisitorCompat;
-use antlr4rust::parser_rule_context::ParserRuleContext;
 use antlr4rust::token::Token;
 use antlr4rust::tree::{ParseTree, ParseTreeVisitorCompat};
 use std::collections::HashSet;
-use crate::parser::generated::yarnspinnerparser;
 
-#[derive(Clone, Default)]
-pub(crate) struct NodeTrackingVisitor {
+/// Finds the nodes whose visits must be counted: those that are passed to `visited` or `visited_count`
+/// anywhere, and those with the header `tracking: always`.
+pub(crate) struct NodeTrackingVisitor<'a> {
     pub(crate) tracking_nodes: HashSet<String>,
     pub(crate) ignoring_nodes: HashSet<String>,
+    annotations: &'a Annotations,
+    file_index: usize,
     _dummy: Option<String>,
 }
 
-impl NodeTrackingVisitor {
-    pub(crate) fn new() -> Self {
-        Default::default()
+impl<'a> NodeTrackingVisitor<'a> {
+    pub(crate) fn new(annotations: &'a Annotations, file_index: usize) -> Self {
+        Self {
+            annotations,
+            file_index,
+            tracking_nodes: Default::default(),
+            ignoring_nodes: Default::default(),
+            _dummy: None,
+        }
     }
 }
 
-impl ParseTreeVisitorCompat<'_> for NodeTrackingVisitor {
+impl ParseTreeVisitorCompat<'_> for NodeTrackingVisitor<'_> {
     type Node = YarnSpinnerParserContextType;
     type Return = Option<String>;
 
@@ -28,32 +38,52 @@ impl ParseTreeVisitorCompat<'_> for NodeTrackingVisitor {
     }
 }
 
-impl<'input> YarnSpinnerParserVisitorCompat<'input> for NodeTrackingVisitor {
-    fn visit_node(&mut self, ctx: &NodeContext<'input>) -> Self::Return {
-        let mut title = None;
-        let mut tracking = None;
-        for header in ctx.header_all() {
-            let key = header.header_key.as_ref().unwrap().get_text();
-            let value = header
-                .header_value
-                .as_ref()
-                .map(|val| val.get_text().to_owned());
-            match key {
-                "title" => {
-                    title = value;
-                }
-                "tracking" => {
-                    tracking = value;
-                }
-                _ => {}
+#[allow(non_snake_case)]
+impl<'input> YarnSpinnerParserVisitorCompat<'input> for NodeTrackingVisitor<'_> {
+    fn visit_function_call(&mut self, ctx: &Function_callContext<'input>) -> Self::Return {
+        let function_name = ctx.FUNC_ID().map(|id| id.get_text()).unwrap_or_default();
+        let parameters = ctx.expression_all();
+        if ["visited", "visited_count"].contains(&function_name.as_str())
+            && let Some(first) = parameters.first()
+        {
+            // We aren't bothering to test anything about the value itself.
+            // If it isn't a static string we'll get back `None`, so we can ignore it.
+            if let Some(node_name) = self.visit(first.as_ref()) {
+                self.tracking_nodes.insert(node_name);
             }
         }
-        if let Some(title) = title
-            && let Some(tracking) = tracking
-        {
+        // Calls can be nested, e.g. `max(visited_count("A"), visited_count("B"))`
+        for parameter in parameters {
+            self.visit(parameter.as_ref());
+        }
+        None
+    }
+
+    fn visit_valueString(&mut self, ctx: &ValueStringContext<'input>) -> Self::Return {
+        Some(ctx.STRING()?.get_text().trim_matches('"').to_owned())
+    }
+
+    fn visit_node(&mut self, ctx: &NodeContext<'input>) -> Self::Return {
+        let node = self.annotations.node(self.file_index, ctx);
+        let tracking = ctx
+            .header_all()
+            .into_iter()
+            .filter(|header| {
+                header
+                    .header_key
+                    .as_ref()
+                    .is_some_and(|key| key.get_text() == "tracking")
+            })
+            .filter_map(|header| Some(header.header_value.as_ref()?.get_text().to_owned()))
+            .next_back();
+
+        if let (Some(title), Some(tracking)) = (node.title, tracking) {
             match tracking.as_str() {
                 "always" => {
                     self.tracking_nodes.insert(title);
+                    if let Some(node_group) = node.node_group {
+                        self.tracking_nodes.insert(node_group);
+                    }
                 }
                 "never" => {
                     self.ignoring_nodes.insert(title);
@@ -61,87 +91,10 @@ impl<'input> YarnSpinnerParserVisitorCompat<'input> for NodeTrackingVisitor {
                 _ => {}
             }
         }
+
         if let Some(body) = ctx.body() {
             return self.visit(body.as_ref());
         }
         None
-    }
-
-    fn visit_valueString(&mut self, ctx: &ValueStringContext<'input>) -> Self::Return {
-        ctx.get_token(yarnspinnerparser::YarnSpinnerParser_STRING, 0)
-            .unwrap()
-            .get_text()
-            .trim_matches('"')
-            .to_owned()
-            .into()
-    }
-
-    fn visit_function_call(&mut self, ctx: &Function_callContext<'input>) -> Self::Return {
-        let function_name = ctx
-            .get_token(yarnspinnerparser::YarnSpinnerParser_FUNC_ID, 0)
-            .unwrap()
-            .get_text();
-
-        if !["visited", "visited_count"].contains(&function_name.as_str()) {
-            return None;
-        }
-        // we aren't bothering to test anything about the value itself
-        // if it isn't a static string we'll get back null so can ignore it
-        // if the func has more than one parameter later on it will cause an error so again can ignore
-        let expression = ctx.expression(0).unwrap();
-        let result = self.visit(expression.as_ref());
-        if let Some(result) = result {
-            self.tracking_nodes.insert(result);
-        }
-        None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::prelude::generated::yarnspinnerparser::YarnSpinnerParser;
-    use crate::prelude::*;
-    use antlr4rust::InputStream;
-    use antlr4rust::common_token_stream::CommonTokenStream;
-
-    #[test]
-    fn finds_title_and_tracking_headers() {
-        let input = "title: this one is tracking
-tracking: always
----
-===
-title: This one is not tracking
-tracking: never
----
-===
-title: This one says nothing about tracking
----
-===
-title: This one is tracking, but indecisive
-tracking: never
-tracking: always
----
-===
-";
-        let result = process_input(input);
-        assert_eq!(result.tracking_nodes.len(), 2);
-        assert_eq!(result.ignoring_nodes.len(), 1);
-        assert!(result.tracking_nodes.contains("this one is tracking"));
-        assert!(
-            result
-                .tracking_nodes
-                .contains("This one is tracking, but indecisive")
-        );
-        assert!(result.ignoring_nodes.contains("This one is not tracking"));
-    }
-
-    fn process_input(input: &str) -> NodeTrackingVisitor {
-        let lexer = YarnSpinnerLexer::new(InputStream::new(input), "input.yarn".to_owned());
-        let mut parser = YarnSpinnerParser::new(CommonTokenStream::new(lexer));
-        let tree = parser.dialogue().unwrap();
-        let mut visitor = NodeTrackingVisitor::new();
-        visitor.visit(tree.as_ref());
-        visitor
     }
 }

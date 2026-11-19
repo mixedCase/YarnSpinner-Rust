@@ -21,7 +21,7 @@ pub type Result<T> = std::result::Result<T, CompilerError>;
 /// ## Implementation note
 ///
 /// This type is a combination of the original `CompilationStep` and `Compiler` types, optimized for easier, fluent calling.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "bevy", derive(Reflect))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "bevy", reflect(Debug, PartialEq))]
@@ -43,9 +43,37 @@ pub struct Compiler {
 
     /// The declarations for variables.
     pub variable_declarations: Vec<Declaration>,
+
+    /// The version of the Yarn language to compile for. This is the version number of `.yarnproject` files.
+    /// Defaults to [`Compiler::CURRENT_LANGUAGE_VERSION`].
+    ///
+    /// - Below 3, the features introduced by Yarn Spinner 3 (enums, smart variables, line groups, `once`) are errors.
+    /// - Below 5, calling a function that is not in the library is a warning. From 5 on, it is an error.
+    pub language_version: u32,
+}
+
+impl Default for Compiler {
+    fn default() -> Self {
+        Self {
+            files: Default::default(),
+            library: Default::default(),
+            compilation_type: Default::default(),
+            variable_declarations: Default::default(),
+            language_version: Self::CURRENT_LANGUAGE_VERSION,
+        }
+    }
 }
 
 impl Compiler {
+    /// The newest version of the Yarn language that this compiler implements: the project file version of Yarn Spinner 3.3.
+    pub const CURRENT_LANGUAGE_VERSION: u32 = 5;
+
+    /// Sets the version of the Yarn language to compile for. See [`Compiler::language_version`].
+    pub fn with_language_version(&mut self, language_version: u32) -> &mut Self {
+        self.language_version = language_version;
+        self
+    }
+
     /// Creates a new [`Compiler`] with the default settings and no files added yet.
     pub fn new() -> Self {
         Self::default()

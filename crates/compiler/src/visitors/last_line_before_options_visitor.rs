@@ -6,9 +6,13 @@ use crate::prelude::*;
 use antlr4rust::tree::ParseTreeVisitorCompat;
 use std::rc::Rc;
 
+/// Finds the lines that are directly followed by options. They get the `#lastline` tag.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct LastLineBeforeOptionsVisitor {
-    _dummy: (),
+    pub(crate) file_index: usize,
+    /// The line statements that were found.
+    pub(crate) last_lines: Vec<crate::annotations::CtxKey>,
+    pub(crate) _dummy: (),
 }
 
 impl ParseTreeVisitorCompat<'_> for LastLineBeforeOptionsVisitor {
@@ -32,7 +36,9 @@ impl<'input> YarnSpinnerParserVisitorCompat<'input> for LastLineBeforeOptionsVis
     // The line is tagged regardless of if there is a #lastline there already
     // technically unnecessary in that case but this feels uncommon enough to not bother edgecasing
     fn visit_line_statement(&mut self, ctx: &Line_statementContext<'input>) -> Self::Return {
-        add_hashtag_child(ctx, "lastline")
+        use crate::visitors::GetHashableInterval;
+        self.last_lines
+            .push((self.file_index, ctx.get_hashable_interval()));
     }
 
     // handles the statements inside of an if statement

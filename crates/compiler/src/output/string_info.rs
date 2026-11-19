@@ -1,6 +1,5 @@
 //! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/da39c7195107d8211f21c263e4084f773b84eaff/YarnSpinner.Compiler/StringInfo.cs>
 
-#[cfg(any(feature = "bevy", feature = "serde"))]
 use crate::prelude::*;
 
 /// Information about a string. Stored inside a string table, which is
@@ -43,4 +42,14 @@ pub struct StringInfo {
     /// This array will contain any hashtags associated with this
     /// string besides the `#line:` hashtag.
     pub metadata: Vec<String>,
+
+    /// If this is a shadow line (a line tagged with `#shadow:<id>`), the ID of the line that it is a copy of.
+    /// Shadow lines reuse the text and assets of their source line, but have their own metadata.
+    /// New in Yarn Spinner 3.
+    ///
+    /// ## Implementation notes
+    ///
+    /// The original sets the text of shadow lines to `null`. Here, [`StringInfo::text`] of a shadow line
+    /// is a copy of the text of its source line, so that it can be shown without looking up the source.
+    pub shadow_line_id: Option<LineId>,
 }
