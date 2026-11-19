@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 pwd
 
@@ -14,4 +14,6 @@ if ! which dotnet; then
     exit 1
 fi
 
-dotnet publish "$CSPROJ_PATH" -c Release -o "$TOOLS_DIR"
+# ysc builds against the YarnSpinner release on NuGet that matches its tag, not against the
+# third-party/YarnSpinner submodule: building that from source needs its diagnostics source generator.
+dotnet publish "$CSPROJ_PATH" -c Release -o "$TOOLS_DIR" -p:YarnSpinnerDevelopmentPath=/nonexistent
