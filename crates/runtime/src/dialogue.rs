@@ -389,6 +389,10 @@ impl Dialogue {
     /// of the contents of the string table, this method does not test to
     /// see if the string table contains an entry with the line ID. You will
     /// need to test for that yourself.
+    #[deprecated(
+        since = "0.11.0",
+        note = "Yarn Spinner 3 has no raw text nodes anymore, so no line with this ID exists."
+    )]
     #[must_use]
     pub fn get_line_id_for_node(&self, node_name: &str) -> Option<LineId> {
         self.get_node_logging_errors(node_name)
@@ -418,7 +422,7 @@ impl Dialogue {
         self.get_node_logging_errors(node_name).map(|node| {
             node.headers
                 .iter()
-                .map(|header| (header.key.clone(), header.value.clone()))
+                .map(|header| (header.key.trim().to_owned(), header.value.trim().to_owned()))
                 .collect()
         })
     }

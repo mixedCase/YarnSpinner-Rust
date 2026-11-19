@@ -72,7 +72,11 @@ impl<'input> YarnSpinnerParserListener<'input> for UntaggedLineListener<'input> 
         let texts = get_hashtag_texts(&hashtags);
 
         // And then look for a line ID hashtag.
-        if texts.iter().any(|tag| tag.starts_with(LINE_ID_PREFIX)) {
+        // Shadow lines take their text from another line, so they must not get a line ID of their own.
+        if texts
+            .iter()
+            .any(|tag| tag.starts_with(LINE_ID_PREFIX) || tag.starts_with("shadow:"))
+        {
             return;
         }
 

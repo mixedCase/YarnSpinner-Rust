@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 /// Current version of the .yarnproject
-pub const CURRENT_PROJECT_FILE_VERSION: u32 = 2;
+pub const CURRENT_PROJECT_FILE_VERSION: u32 = 5;
+
+/// The oldest version of the .yarnproject format that can be loaded
+pub const MINIMUM_PROJECT_FILE_VERSION: u32 = 2;
 
 /// Yarn Projects represent instructions on where to find Yarn scripts and
 /// associated assets, and how they should be compiled.
@@ -22,7 +25,8 @@ pub const CURRENT_PROJECT_FILE_VERSION: u32 = 2;
 pub struct Project {
     /// Gets or sets the file version of the project.
     ///
-    /// This value is required to be equal to [`CURRENT_PROJECT_FILE_VERSION`]
+    /// This value is required to be between [`MINIMUM_PROJECT_FILE_VERSION`] and [`CURRENT_PROJECT_FILE_VERSION`].
+    /// Pass it to [`Compiler::with_language_version`](crate::prelude::Compiler::with_language_version) when compiling the project.
     pub project_file_version: u32,
 
     /// Gets the path that the [`Project`]` was loaded from.
@@ -135,7 +139,10 @@ impl Project {
         let mut project: Project =
             serde_json::from_str(&text).map_err(|e| format!("Invalid JSON: {e}"))?;
 
-        if project.project_file_version != CURRENT_PROJECT_FILE_VERSION {
+        // The version doubles as the language version, so older projects are accepted and compiled with the rules of their version.
+        if !(MINIMUM_PROJECT_FILE_VERSION..=CURRENT_PROJECT_FILE_VERSION)
+            .contains(&project.project_file_version)
+        {
             return Err(format!(
                 "Incorrect project file version (expected {}, got {})",
                 CURRENT_PROJECT_FILE_VERSION, project.project_file_version
