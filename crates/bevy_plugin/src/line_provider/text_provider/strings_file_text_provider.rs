@@ -23,6 +23,9 @@ pub struct StringsFileTextProvider {
     base_string_table: HashMap<LineId, String>,
     strings_file_handle: Option<Handle<StringsFile>>,
     translation_string_table: Option<HashMap<LineId, String>>,
+    /// Maps the IDs of shadow lines (`#shadow:<line id>`) to the lines whose text they reuse.
+    /// Strings files only contain the latter.
+    shadow_lines: HashMap<LineId, LineId>,
     event_cursor: Arc<RwLock<MessageCursor<AssetEvent<StringsFile>>>>,
 }
 
@@ -40,6 +43,7 @@ impl UnderlyingTextProvider for StringsFileTextProvider {
             return self.base_string_table.get(id).cloned();
         }
 
+        let id = self.shadow_lines.get(id).unwrap_or(id);
         self.translation_string_table
             .as_ref()
             .and_then(|table| table.get(id).cloned())
@@ -119,6 +123,7 @@ impl StringsFileTextProvider {
             base_string_table: yarn_project.text_table(),
             strings_file_handle: None,
             translation_string_table: None,
+            shadow_lines: yarn_project.shadow_lines(),
             event_cursor: Default::default(),
         }
     }

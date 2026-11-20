@@ -1,4 +1,7 @@
-pub(crate) use self::{asset::StringsFile, updating::UpdateAllStringsFilesForStringTableEvent};
+pub(crate) use self::{
+    asset::{SHADOW_TAG_PREFIX, StringsFile},
+    updating::UpdateAllStringsFilesForStringTableEvent,
+};
 use bevy::prelude::*;
 
 mod asset;

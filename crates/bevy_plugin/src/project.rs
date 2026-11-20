@@ -85,6 +85,22 @@ impl YarnProject {
             .collect()
     }
 
+    /// Maps the IDs of shadow lines (`#shadow:<line id>`) to the IDs of the lines whose text they reuse.
+    pub(crate) fn shadow_lines(&self) -> std::collections::HashMap<LineId, LineId> {
+        use crate::localization::SHADOW_TAG_PREFIX;
+        self.compilation
+            .texts()
+            .filter_map(|(id, _)| {
+                let source = self
+                    .compilation
+                    .line_metadata(id)?
+                    .iter()
+                    .find_map(|tag| tag.strip_prefix(SHADOW_TAG_PREFIX))?;
+                Some((id.clone(), LineId(format!("line:{source}"))))
+            })
+            .collect()
+    }
+
     /// Returns the headers associated with the given node, if it exists.
     pub fn headers_for_node(&self, node_name: &str) -> Option<HashMap<&str, Vec<&str>>> {
         self.compilation

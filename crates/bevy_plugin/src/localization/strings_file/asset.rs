@@ -147,6 +147,15 @@ impl StringsFile {
         let language = language.into();
         let mut records = HashMap::default();
         for (id, string_info) in string_table {
+            // Shadow lines (`#shadow:<line id>`) reuse the text of another line, so they have nothing to translate.
+            if string_info.shadow_line_id.is_some()
+                || string_info
+                    .metadata
+                    .iter()
+                    .any(|tag| tag.starts_with(SHADOW_TAG_PREFIX))
+            {
+                continue;
+            }
             if string_info.is_implicit_tag {
                 bail!(
                     "Cannot build strings file from not fully tagged Yarn files (line {} in \"{}\" is not tagged).",
@@ -323,6 +332,9 @@ fn read_comments(metadata: impl IntoIterator<Item = String>) -> String {
         format!("{LINE_METADATA_PREFIX}{}", cleaned_metadata.join(" "))
     }
 }
+
+/// The prefix of the hashtag that makes a line a copy of the line with the ID after the prefix.
+pub(crate) const SHADOW_TAG_PREFIX: &str = "shadow:";
 
 #[cfg(test)]
 mod test {
