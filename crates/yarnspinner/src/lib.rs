@@ -51,8 +51,8 @@ pub mod runtime {
     //! Types and traits used by the runtime, in particular the [`Dialogue`] struct.
     pub use yarnspinner_runtime::Result;
     pub use yarnspinner_runtime::markup::{
-        CHARACTER_ATTRIBUTE, CHARACTER_ATTRIBUTE_NAME_PROPERTY, MarkupAttribute, MarkupParseError,
-        MarkupValue, TRIM_WHITESPACE_PROPERTY,
+        CHARACTER_ATTRIBUTE, CHARACTER_ATTRIBUTE_NAME_PROPERTY, MarkupAttribute, MarkupDiagnostic,
+        MarkupParseError, MarkupValue, TRIM_WHITESPACE_PROPERTY,
     };
     pub use yarnspinner_runtime::prelude::*;
 }

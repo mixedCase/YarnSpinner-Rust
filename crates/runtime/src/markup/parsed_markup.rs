@@ -1,14 +1,11 @@
 //! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/da39c7195107d8211f21c263e4084f773b84eaff/YarnSpinner/YarnSpinner.Markup/MarkupParseResult.cs>
 
 pub use self::{markup_attribute::*, markup_value::*};
-pub(crate) use self::{markup_attribute_marker::*, tag_type::*};
 use crate::prelude::*;
 use core::fmt::Debug;
 
 mod markup_attribute;
-mod markup_attribute_marker;
 mod markup_value;
-mod tag_type;
 
 /// The result of parsing a line of marked-up text.
 ///

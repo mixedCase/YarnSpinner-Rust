@@ -1,7 +1,7 @@
 //! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/da39c7195107d8211f21c263e4084f773b84eaff/YarnSpinner/YarnSpinner.Markup/MarkupParseResult.cs>
 //! which was split into multiple files.
 
-use crate::markup::{MarkupAttributeMarker, MarkupValue};
+use crate::markup::MarkupValue;
 use crate::prelude::*;
 use bevy_platform::collections::HashMap;
 use core::fmt::Display;
@@ -35,16 +35,6 @@ pub struct MarkupAttribute {
 }
 
 impl MarkupAttribute {
-    pub(crate) fn from_marker(marker: MarkupAttributeMarker, length: usize) -> Self {
-        Self {
-            name: marker.name.unwrap(),
-            position: marker.position,
-            length,
-            properties: marker.properties,
-            source_position: marker.source_position,
-        }
-    }
-
     /// Returns the value of the property with the given name, if it exists.
     /// For examples, the text `Hello [size=20]world[/size]` has a property named `size` with the value `20`.
     pub fn property(&self, name: &str) -> Option<&MarkupValue> {

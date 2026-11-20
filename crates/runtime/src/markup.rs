@@ -229,7 +229,8 @@ mod tests {
         assert_eq!(1, markup.attributes.len());
 
         assert_eq!("a", markup.attributes[0].name);
-        assert!(markup.attributes[0].properties.is_empty());
+        // one because of the implicit trimwhitespace property on self-closing markup
+        assert_eq!(1, markup.attributes[0].properties.len());
         assert_eq!(2, markup.attributes[0].position);
         assert_eq!(0, markup.attributes[0].length);
     }
@@ -240,7 +241,6 @@ mod tests {
             ("A [a/] B", "A B"),
             ("A [a trimwhitespace=true/] B", "A B"),
             ("A [a trimwhitespace=false/] B", "A  B"),
-            ("A [nomarkup/] B", "A  B"),
             ("A [nomarkup trimwhitespace=false/] B", "A  B"),
             ("A [nomarkup trimwhitespace=true/] B", "A B"),
         ] {
@@ -311,14 +311,16 @@ mod tests {
     #[test]
     fn test_numeric_properties() {
         let line = "[select value=1 1=one 2=two 3=three /]";
-        let markup = line_parser().parse_markup(line).unwrap();
+        // Without a processor for it, `select` is an attribute like any other
+        let markup = LineParser::new().parse_markup(line).unwrap();
 
         assert_eq!(1, markup.attributes.len());
 
         let attribute = &markup.attributes[0];
 
         assert_eq!("select", attribute.name);
-        assert_eq!(4, attribute.properties.len());
+        // The four properties, plus the implicit trimwhitespace property on self-closing markup
+        assert_eq!(5, attribute.properties.len());
         assert_eq!(
             &MarkupValue::Integer(1),
             attribute.properties.get("value").unwrap()
@@ -335,8 +337,12 @@ mod tests {
             &MarkupValue::String("three".to_owned()),
             attribute.properties.get("3").unwrap()
         );
+        assert_eq!("", markup.text);
 
+        // With its processor, the marker is replaced by text and is no attribute anymore
+        let markup = line_parser().parse_markup(line).unwrap();
         assert_eq!("one", markup.text);
+        assert!(markup.attributes.is_empty());
     }
 
     #[test]
@@ -356,6 +362,166 @@ mod tests {
             let markup = line_parser.parse_markup(&line).unwrap();
 
             assert_eq!(expected, markup.text, "locale: {locale}");
+        }
+    }
+
+    /// Wraps the contents of a marker into `<tag>` and `</tag>`, like `BBCodeChevronReplacer` of the original tests.
+    #[derive(Debug, Clone)]
+    struct ChevronReplacer(&'static str);
+
+    impl AttributeMarkerProcessor for ChevronReplacer {
+        fn process_replacement_marker(
+            &self,
+            _marker: &MarkupAttribute,
+            child_builder: &mut String,
+            _child_attributes: &mut Vec<MarkupAttribute>,
+            _language_code: Option<&Language>,
+        ) -> ReplacementMarkerResult {
+            *child_builder = format!("<{0}>{child_builder}</{0}>", self.0);
+            ReplacementMarkerResult {
+                diagnostics: Vec::new(),
+                invisible_characters: 5 + self.0.len() * 2,
+            }
+        }
+
+        fn clone_box(&self) -> Box<dyn AttributeMarkerProcessor> {
+            Box::new(self.clone())
+        }
+    }
+
+    #[test]
+    fn test_markup_strings_with_rewriters_are_valid() {
+        for (line, expected_text, attribute_count) in [
+            (
+                "this is a[nomarkup] line with [b]nomarkup hiding[/b] markup[/nomarkup] elements",
+                "this is a line with [b]nomarkup hiding[/b] markup elements",
+                1,
+            ),
+            (
+                "This is a [bold]line testing basic[/bold] replacement markers",
+                "This is a <bold>line testing basic</bold> replacement markers",
+                0,
+            ),
+            (
+                "[a]This is [b]some [c]markup[/b] with[/c] closing tag issues inside a valid tag[/a]",
+                "This is some markup with closing tag issues inside a valid tag",
+                3,
+            ),
+        ] {
+            let markup = LineParser::new()
+                .register_marker_processor("bold", Box::new(ChevronReplacer("bold")))
+                .parse_markup(line)
+                .unwrap();
+            assert_eq!(expected_text, markup.text);
+            assert_eq!(attribute_count, markup.attributes.len(), "{line}");
+        }
+    }
+
+    #[test]
+    fn test_split_attributes_are_merged_and_cover_the_same_text() {
+        let line =
+            "[a]This is [b]some [c]markup[/b] with[/c] closing tag issues inside a valid tag[/a]";
+        let markup = LineParser::new().parse_markup(line).unwrap().as_line();
+        let text = |name: &str| markup.text_for_attribute(markup.attribute(name).unwrap());
+        assert_eq!(markup.text, text("a"));
+        assert_eq!("some markup", text("b"));
+        assert_eq!("markup with", text("c"));
+    }
+
+    #[test]
+    fn test_older_sibling_near_replacement_markers_correctly_respects_whitespace_consumption() {
+        for (line, expected) in [
+            (
+                "Yes... which I would have shown [emotion=\"frown\" /] had [b]you[/b] not interrupted me.",
+                "Yes... which I would have shown had <b>you</b> not interrupted me.",
+            ),
+            (
+                "Yes... which I would have shown [emotion=\"frown\" trimwhitespace=false /] had [b]you[/b] not interrupted me.",
+                "Yes... which I would have shown  had <b>you</b> not interrupted me.",
+            ),
+            (
+                "Yes... which I would have shown [emotion/] had [b]you [emotion=\"frown\" /] not[/b] interrupted me.",
+                "Yes... which I would have shown had <b>you not</b> interrupted me.",
+            ),
+            (
+                "Yes... which I would have [b]shown [emotion=\"frown\" /] [/b]had you not interrupted me.",
+                "Yes... which I would have <b>shown </b>had you not interrupted me.",
+            ),
+            (
+                "Yes... which I would have [b]shown [emotion=\"frown\" /][/b]had you not interrupted me.",
+                "Yes... which I would have <b>shown </b>had you not interrupted me.",
+            ),
+        ] {
+            let markup = LineParser::new()
+                .register_marker_processor("b", Box::new(ChevronReplacer("b")))
+                .parse_markup(line)
+                .unwrap();
+            assert_eq!(expected, markup.text);
+        }
+    }
+
+    #[test]
+    fn test_invisible_characters_do_not_shift_later_attributes() {
+        let markup = LineParser::new()
+            .register_marker_processor("b", Box::new(ChevronReplacer("b")))
+            .parse_markup("[b]bold[/b] and [wave]wavy[/wave]")
+            .unwrap();
+        assert_eq!("<b>bold</b> and wavy", markup.text);
+        // The position is the one in the text that the player sees, without the rich text tags
+        assert_eq!(9, markup.attributes[0].position);
+        assert_eq!(4, markup.attributes[0].length);
+    }
+
+    #[test]
+    fn test_implicit_character_attribute_parsing_can_be_escaped() {
+        for (input, character) in [
+            ("Mae: Wow!", "Mae"),
+            ("Mae\\: Wow!: Wow!", "Mae: Wow!"),
+            ("Mae\\: Wow!: \\:Wow!", "Mae: Wow!"),
+            ("Mae\\: Wow!: :Wow!", "Mae: Wow!"),
+        ] {
+            let markup = LineParser::new().parse_markup(input).unwrap();
+            assert_eq!(1, markup.attributes.len(), "{input}");
+            let attribute = &markup.attributes[0];
+            assert_eq!(CHARACTER_ATTRIBUTE, attribute.name);
+            assert_eq!(0, attribute.position);
+            assert_eq!(
+                Some(&MarkupValue::String(character.to_owned())),
+                attribute.property(CHARACTER_ATTRIBUTE_NAME_PROPERTY)
+            );
+        }
+        for (input, output) in [
+            ("Mae\\: Wow!", "Mae: Wow!"),
+            ("\\:Mae\\: Wow!", ":Mae: Wow!"),
+            ("\\:", ":"),
+        ] {
+            let markup = LineParser::new().parse_markup(input).unwrap();
+            assert!(markup.attributes.is_empty(), "{input}");
+            assert_eq!(output, markup.text);
+        }
+    }
+
+    #[test]
+    fn test_character_names_may_contain_quotes() {
+        let markup = LineParser::new()
+            .parse_markup("Dwayne \"The Rock\" Johnson: Hello")
+            .unwrap()
+            .as_line();
+        assert_eq!(Some("Dwayne \"The Rock\" Johnson"), markup.character_name());
+        assert_eq!("Hello", markup.text_without_character_name());
+    }
+
+    #[test]
+    fn test_replacement_markers_report_what_is_wrong() {
+        for line in [
+            "[select value=1 2=two /]",
+            "[select 1=one /]",
+            "[select value=1 1=one]text[/select]",
+            "[plural value=\"many\" one=a other=b /]",
+        ] {
+            let MarkupParseError::InvalidMarkup { diagnostics, .. } =
+                line_parser().parse_markup(line).unwrap_err();
+            assert_eq!(1, diagnostics.len(), "{line}");
         }
     }
 
