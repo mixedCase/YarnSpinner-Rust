@@ -49,7 +49,15 @@ impl TuiDialogueRunner {
         //
         // In a real game, you might want to consider doing this as part of your asset
         // pipeline, rather than at runtime..
-        let compilation = Compiler::new().read_file(source_path).compile()?;
+        //
+        // Since Yarn Spinner 3.3, the compiler must know every function that the scripts call. The best
+        // way to tell it is `Compiler::extend_library`. These examples only register their functions
+        // after compiling, so we compile with the rules of language version 4 instead, where calling
+        // an unknown function declares it implicitly.
+        let compilation = Compiler::new()
+            .with_language_version(4)
+            .read_file(source_path)
+            .compile()?;
 
         // One of the outputs of compiling is a string table, containing all of the
         // text (and associated metadata) for our dialogue.

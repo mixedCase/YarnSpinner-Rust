@@ -24,29 +24,5 @@ sed -i 's/YarnSpinnerParserParserContext/YarnSpinnerParserContext/g' "$P"
 sed -i 's/^\(\s*\)visitor\.visit_node(self);/\1YarnSpinnerParserVisitor::visit_node(visitor, self);/' "$P"
 # Lexer predicates/actions live in crate::parser::lexer_support (the C# version has them on the lexer base class).
 sed -i 's/IsInWhenClause();/crate::parser::lexer_support::is_in_when_clause()/g; s/SetInWhenClause(\(true\|false\));/crate::parser::lexer_support::set_in_when_clause(\1);/g; s/IsEndOfCommandKeyword()/crate::parser::lexer_support::is_end_of_command_keyword(recog)/g' "$L"
-# C# ANTLR can create a context with a specific text; add the same for hashtags.
-python3 - "$P" <<'PY'
-import sys
-p = sys.argv[1]
-s = open(p).read()
-anchor = "impl<'input> HashtagContextExt<'input>{\n"
-assert anchor in s, "generator output changed: HashtagContextExt impl not found"
-s = s.replace(anchor, anchor + """\tpub fn new_with_text(
-\t\tparent: Option<Rc<dyn YarnSpinnerParserContext<'input> + 'input>>,
-\t\tinvoking_state: i32,
-\t\ttext: impl Into<Option<TokenType<'input>>>
-\t) -> Rc<HashtagContextAll<'input>> {
-\t\tRc::new(BaseParserRuleContext::new_parser_ctx(
-\t\t\tparent,
-\t\t\tinvoking_state,
-\t\t\tHashtagContextExt {
-\t\t\t\ttext: text.into(),
-\t\t\t\tph: PhantomData,
-\t\t\t},
-\t\t))
-\t}
-""", 1)
-open(p, "w").write(s)
-PY
 grep -q "lexer_support::is_end_of_command_keyword" "$L" || { echo "lexer predicate patch failed"; exit 1; }
 echo "done"
