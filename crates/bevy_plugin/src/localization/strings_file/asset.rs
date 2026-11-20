@@ -341,6 +341,27 @@ mod test {
     use super::*;
 
     #[test]
+    fn leaves_shadow_lines_out_of_strings_file() {
+        let line = |shadow_line_id: Option<&str>| StringInfo {
+            text: "Hello".to_owned(),
+            shadow_line_id: shadow_line_id.map(|id| LineId(id.to_owned())),
+            // Shadow lines have a generated line ID
+            is_implicit_tag: shadow_line_id.is_some(),
+            ..Default::default()
+        };
+        let strings_file = StringsFile::from_string_table(
+            "en-US",
+            [
+                (LineId("line:a".to_owned()), line(None)),
+                (LineId("line:sh_1".to_owned()), line(Some("line:a"))),
+            ],
+        )
+        .unwrap();
+        assert_eq!(1, strings_file.0.len());
+        assert!(strings_file.0.contains_key(&LineId("line:a".to_owned())));
+    }
+
+    #[test]
     fn combines_comments_without_change() {
         let old = "Foo, Line metadata: Bar";
         let new = "Line metadata: Bar";
