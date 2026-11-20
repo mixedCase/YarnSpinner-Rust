@@ -17,7 +17,10 @@ fn ysc() -> PathBuf {
 
 /// Compiles `yarn_file` with ysc into a fresh temp dir and returns the decoded [`Program`].
 fn compile_with_ysc(yarn_file: &Path) -> Program {
-    let out_dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("yarnc_tests");
+    // One directory per input, because tests run in parallel
+    let out_dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("yarnc_tests")
+        .join(yarn_file.file_stem().unwrap());
     let _ = remove_dir_all(&out_dir);
     create_dir_all(&out_dir).unwrap();
 

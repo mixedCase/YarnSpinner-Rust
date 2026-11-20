@@ -20,7 +20,7 @@ fn test_project_file_can_be_loaded() {
     assert_eq!(project.source_file_patterns, vec!["**/*.yarn"]);
 
     assert_eq!(project.base_language, "en");
-    assert_eq!(project.definitions, Some("Functions.ysls.json".to_owned()));
+    assert_eq!(project.definitions, Some("Commands.ysls.json".to_owned()));
 
     assert!(project.localisation.contains_key("en"));
     assert_eq!(
