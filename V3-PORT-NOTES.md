@@ -42,7 +42,7 @@ Feature checklist (C# v3.3.1 parity):
 | options fall through when none selected (3.1) | done (`Dialogue::set_no_option_selected`) |
 | `has_any_content`, `min`, `max`, `format`, `Dialogue::get_header_value` etc. | done |
 | undeclared functions are errors from language version 5 (3.3), warning below | done (`Compiler::language_version`) |
-| escaped `:` in lines (3.2) | done (minimal, in the existing markup parser) |
+| markup parser of v3 (lexer + tree, split/merged overlapping markers, replacement markers with invisible characters, `trimwhitespace`, escaped `:`, character names with quotes) | done |
 | stable diagnostic codes (3.2) | done (`Diagnostic::code`) |
 | `bevy_yarnspinner`: builds, saliency strategy selection | done (`DialogueRunnerBuilder::with_content_saliency_strategy`, `DialogueRunner::set_content_saliency_strategy`) |
 
@@ -97,6 +97,10 @@ use `cargo test -j 2 -p bevy_yarnspinner`.
   `FunctionType::variadic_parameter_type`, enum variants `Type::Enum`, `DiagnosticSeverity::Info`,
   `DialogueError::{SmartVariableError, InvalidSaliencySelection}`.
 - `Type::name()` returns `Cow<'static, str>` instead of `&'static str`.
+- Markup (v3 `LineParser`): `MarkupParseError` has a single variant `InvalidMarkup { input, diagnostics }` now (the 2.x
+  variants are gone). Replacement markers (`select`, `plural`, `ordinal`) no longer leave an attribute behind.
+  Self-closing markers carry a `trimwhitespace` property in `MarkupAttribute::properties`. Overlapping markers like
+  `[a][b]x[/a]y[/b]` are valid. A failing `select`/`plural`/`ordinal` is an error instead of a panic.
 - Error messages of the type checker changed to the C# v3 wording.
 - Implicit line IDs are now `line:<8 hex digits>` like in C# (previously decimal). Tag your lines (`Compiler::tag_lines`)
   if you persist line IDs.
@@ -120,12 +124,16 @@ use `cargo test -j 2 -p bevy_yarnspinner`.
 - Enum case raw values are not compiled into instructions (ysc 3.3.1 pushes them onto the stack and leaks them).
 - Saliency strategies receive the variable storage as an argument instead of owning it.
 - Booleans are formatted `true`/`false` (C#: `True`/`False`), as in 0.10.
+- Markup: malformed markup is an error (C#: the raw line is returned and diagnostics are dropped); positions count
+  text elements (C#: UTF-16 units); overlapping markers at the very end of a line are accepted (C# rejects them);
+  the internal ID property of split markers is removed from the merged attribute.
 
 ## Known gaps
 
-- Markup: the `LineParser` is still the 2.x port plus `\:`. Not ported from 3.x: the rewritten parser
-  (`nomarkup` handling, `trimwhitespace` property, replacement marker API with invisible characters, markup
-  diagnostics, implicit `[character]` processing by marker processors). `MarkupTests.cs` of v3 are not ported.
+- Markup: the v3 `LineParser` is ported (`crates/runtime/src/markup/line_parser.rs`) with a subset of the
+  v3 `MarkupTests.cs` (the lexer/tree unit tests of C# are only partly ported). Not ported: user-registered
+  replacement marker processors as public API (the trait is crate-private, as before), processors for the implicit
+  `[character]` marker, `ParseStringAndIncludeMarkupDiagnostics`-style access without failing.
 - Compiler: syntax validation warnings (YS0019-YS0022, YS0048, YS0064), markup diagnostics at compile time (YS0063),
   unreachable code analysis (YS0008), `NodeMetadata`, `ILineTagGenerator`/`DescriptiveLineTagGenerator`,
   `CompilationJob.TypeDeclarations` and forward declared types, `.ysls.json` handling are not ported.
