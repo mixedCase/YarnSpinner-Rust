@@ -610,35 +610,65 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
             None => self.file.diagnostic_at(ctx),
         };
 
+        let parameters = ctx.expression_all();
         let declaration = function_name
             .as_deref()
-            .and_then(|name| self.state.declarations.get(name));
-        let Some((Ty::Function(function_type), is_implicit)) =
-            declaration.map(|declaration| (declaration.ty.clone(), declaration.is_implicit))
-        else {
-            if self.state.language_version >= VERSION_WITH_MANDATORY_FUNCTION_DECLARATIONS {
+            .and_then(|name| self.state.declarations.get(name))
+            .map(|declaration| (declaration.ty.clone(), declaration.is_implicit));
+        let (function_type, is_implicit) = match declaration {
+            Some((Ty::Function(function_type), is_implicit)) => (function_type, is_implicit),
+            _ if self.state.language_version >= VERSION_WITH_MANDATORY_FUNCTION_DECLARATIONS => {
                 self.add_diagnostic(
                     at_function_name,
                     descriptors::UNKNOWN_FUNCTION.create(&[&display_name]),
                 );
-            } else {
-                // Older projects may call functions that the compiler doesn't know. Their type is whatever fits.
-                let ty = self.generate_type_variable(Some(&format!(
-                    "Return from unknown function {}",
-                    function_name.as_deref().unwrap_or("(unknown)")
-                )));
-                self.set_type(ctx, ty);
+                return;
+            }
+            _ => {
+                // ## Implementation note
+                // Older projects may call functions that the compiler doesn't know. The original (3.3) only
+                // gives the call an unknown type here. We declare the function implicitly from how it is
+                // called, like Yarn Spinner 2 did, because that is how the Bevy plugin has always worked:
+                // its functions are registered on the dialogue runner, after compilation.
                 self.add_diagnostic(
-                    at_function_name,
+                    at_function_name.clone(),
                     descriptors::USE_OF_UNDECLARED_FUNCTIONS_IN_V4_IS_DEPRECATED
                         .create(&[&display_name]),
                 );
+                let return_type = self.generate_type_variable(Some(&format!(
+                    "Return from unknown function {}",
+                    function_name.as_deref().unwrap_or("(unknown)")
+                )));
+                let function_type = Rc::new(FnTy {
+                    parameters: parameters
+                        .iter()
+                        .map(|parameter| self.type_of(parameter.as_ref()))
+                        .collect(),
+                    return_type,
+                    variadic_parameter_type: None,
+                });
+                self.state.declarations.add(Decl {
+                    name: display_name.clone(),
+                    ty: Ty::Function(function_type.clone()),
+                    description: Some(format!(
+                        "Implicit declaration of function at {}:{}",
+                        self.file.name,
+                        ctx.start().get_line()
+                    )),
+                    default_value: None,
+                    range: Some(ctx_range(ctx)),
+                    is_implicit: true,
+                    is_inline_expansion: false,
+                    source_file_name: DeclarationSource::File(self.file.name.clone()),
+                    source_node_name: self.current_node_name.clone(),
+                    initial_value: None,
+                    declaration_site: None,
+                });
+                (function_type, true)
             }
-            return;
         };
 
         // Check each parameter of the function
-        let parameters = ctx.expression_all();
         let actual = parameters.len();
         let expected = function_type.parameters.len();
         if actual != expected && function_type.variadic_parameter_type.is_none() {

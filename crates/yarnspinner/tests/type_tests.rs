@@ -761,14 +761,32 @@ fn test_undeclared_functions_are_errors_since_language_version_5() {
             && d.code.as_deref() == Some("YS0013")
     }));
 
-    // Projects of older versions get a warning instead. The type of the call still has to be determinable.
-    let result = Compiler::from_test_source("<<declare $x = 1>>\n<<set $x = func(1)>>")
-        .with_language_version(4)
-        .compile()
-        .unwrap();
+    // Projects of older versions get a warning instead, and the function is declared implicitly by the call.
+    // Nothing says what `other` returns, so it may return anything.
+    let result =
+        Compiler::from_test_source("<<declare $x = 1>>\n<<set $x = func(1)>>\n{other(\"a\")}")
+            .with_language_version(4)
+            .compile()
+            .unwrap();
     assert!(result.warnings.iter().any(|d| {
         d.code.as_deref() == Some("YS0065") && d.severity == DiagnosticSeverity::Warning
     }));
+    let function_type = |name: &str| {
+        let declaration = result.declarations.iter().find(|d| d.name == name).unwrap();
+        assert!(declaration.is_implicit);
+        declaration.r#type.to_string()
+    };
+    assert_eq!("Fn(Number) -> Number", function_type("func"));
+    assert_eq!("Fn(String) -> Any", function_type("other"));
+
+    // Calling it with a different number of parameters elsewhere is still an error
+    let result = Compiler::from_test_source("{func(1)}\n{func(1, 2)}")
+        .with_language_version(4)
+        .compile()
+        .unwrap_err();
+    assert!(result.0.iter().any(|d| d.message.contains(
+        "func was called elsewhere with 1 parameter, but is called with 2 parameters here"
+    )));
 }
 
 #[test]

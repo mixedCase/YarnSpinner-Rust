@@ -289,6 +289,15 @@ fn compile_yarn_files(
         }
     }
     let inner_yarn_files = yarn_files.map(|file| file.file.clone());
-    let compilation = YarnCompiler::new().add_files(inner_yarn_files).compile()?;
+    // Functions are registered on the `DialogueRunner`, which doesn't exist yet when the project is compiled.
+    // So we compile with the rules of language version 4, where calling a function that the compiler
+    // doesn't know declares it implicitly instead of being an error.
+    let compilation = YarnCompiler::new()
+        .with_language_version(LANGUAGE_VERSION)
+        .add_files(inner_yarn_files)
+        .compile()?;
     Ok(Some(compilation))
 }
+
+/// The version of the Yarn language that the plugin compiles for.
+const LANGUAGE_VERSION: u32 = 4;

@@ -293,6 +293,31 @@ fn compile_files<'input>(
         });
     }
 
+    // Functions that were declared implicitly by calling them (only possible below language version 5)
+    // may have parameters and return values that nothing constrains, like in `{get_name()}`. Those can be anything.
+    let unconstrained: Vec<Ty> = state
+        .declarations
+        .iter()
+        .filter(|declaration| declaration.is_implicit)
+        .filter_map(|declaration| match &declaration.ty {
+            Ty::Function(function) => Some(function.clone()),
+            _ => None,
+        })
+        .flat_map(|function| {
+            function
+                .parameters
+                .iter()
+                .chain([&function.return_type])
+                .map(|ty| ty.substitute(&state.solution))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for ty in unconstrained {
+        if let Ty::Var(name) = ty {
+            state.solution.insert(name, Ty::Any);
+        }
+    }
+
     // Apply the solution to all declarations
     for declaration in state.declarations.iter_mut() {
         declaration.ty = declaration.ty.substitute(&state.solution);
