@@ -10,8 +10,6 @@ use std::rc::Rc;
 /// produce that parse tree.
 #[derive(Clone)]
 pub(crate) struct FileParseResult<'input> {
-    pub name: String,
-
     pub tree: Rc<DialogueContextAll<'input>>,
 
     /// This was not in the original, but in Rust we need to actually store
@@ -23,11 +21,10 @@ pub(crate) struct FileParseResult<'input> {
 
 impl<'input> FileParseResult<'input> {
     pub(crate) fn new(
-        name: String,
         tree: Rc<DialogueContextAll<'input>>,
         parser: Rc<ActualYarnSpinnerParser<'input>>,
     ) -> Self {
-        Self { name, tree, parser }
+        Self { tree, parser }
     }
 
     pub(crate) fn tokens(&self) -> &ActualTokenStream<'input> {

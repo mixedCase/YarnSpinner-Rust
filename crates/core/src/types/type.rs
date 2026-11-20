@@ -1,10 +1,10 @@
 use crate::prelude::*;
-use alloc::borrow::Cow;
 use crate::types::any::any_type_properties;
 use crate::types::boolean::boolean_type_properties;
 use crate::types::number::number_type_properties;
 use crate::types::string::string_type_properties;
 use crate::types::*;
+use alloc::borrow::Cow;
 use core::any::TypeId;
 use core::error::Error;
 use core::fmt::{Debug, Display};
@@ -226,8 +226,10 @@ impl Type {
             Some(Type::Boolean)
         } else if vec_ids![YarnValue].contains(&type_id) {
             Some(Type::Any)
-        } else if vec_ids![f32, f64, i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, usize, isize]
-            .contains(&type_id)
+        } else if vec_ids![
+            f32, f64, i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, usize, isize
+        ]
+        .contains(&type_id)
         {
             Some(Type::Number)
         } else {

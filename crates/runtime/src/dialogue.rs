@@ -509,7 +509,9 @@ impl Dialogue {
     /// Note that when compiling with the `bevy` feature, you should use [`Dialogue::has_any_content_with_world`] instead.
     pub fn has_any_content(&self, node_group: &str) -> Result<bool> {
         self.vm
-            .has_any_content(node_group, &mut |function, parameters| function.call(parameters))
+            .has_any_content(node_group, &mut |function, parameters| {
+                function.call(parameters)
+            })
     }
 
     /// Like [`Dialogue::get_smart_variable`], but functions may be Bevy systems.
@@ -519,9 +521,10 @@ impl Dialogue {
         name: &str,
         world: &mut World,
     ) -> Result<Option<YarnValue>> {
-        self.vm.get_smart_variable(name, &mut |function, parameters| {
-            function.call_with_world(parameters, world)
-        })
+        self.vm
+            .get_smart_variable(name, &mut |function, parameters| {
+                function.call_with_world(parameters, world)
+            })
     }
 
     /// Like [`Dialogue::get_saliency_options_for_node_group`], but functions may be Bevy systems.
@@ -540,9 +543,10 @@ impl Dialogue {
     /// Like [`Dialogue::has_any_content`], but functions may be Bevy systems.
     #[cfg(feature = "bevy")]
     pub fn has_any_content_with_world(&self, node_group: &str, world: &mut World) -> Result<bool> {
-        self.vm.has_any_content(node_group, &mut |function, parameters| {
-            function.call_with_world(parameters, world)
-        })
+        self.vm
+            .has_any_content(node_group, &mut |function, parameters| {
+                function.call_with_world(parameters, world)
+            })
     }
 
     /// The strategy that decides which item of a line group or which member of a node group runs.

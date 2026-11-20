@@ -526,9 +526,10 @@ This is the one and only line
         // See generated_lexer_output_is_same_as_reference for the commented out lines :)
         // TODO: investigate if we can do anything. Maybe fix the rust antlr generator?
         let expected = vec![
-            "ID",
+            "HEADER_TITLE",
             "HEADER_DELIMITER",
-            "REST_OF_LINE",
+            "ID",
+            "NEWLINE",
             // "NEWLINE",
             "BODY_START",
             // "NEWLINE",
@@ -594,9 +595,10 @@ This is the one and only line
         // Tests the compatibility of the generated lexer with a manually generated output from the reference implementation.
         // The commented out lines are not correctly lexed by the generated lexer (in comparison with the C# generated lexer).
         let expected = vec![
-            "ID",
+            "HEADER_TITLE",
             "HEADER_DELIMITER",
-            "REST_OF_LINE",
+            "ID",
+            "NEWLINE",
             // "NEWLINE",
             "BODY_START",
             // "NEWLINE",

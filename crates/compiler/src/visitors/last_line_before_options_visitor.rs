@@ -2,7 +2,6 @@
 
 use crate::prelude::generated::yarnspinnerparser::*;
 use crate::prelude::generated::yarnspinnerparservisitor::YarnSpinnerParserVisitorCompat;
-use crate::prelude::*;
 use antlr4rust::tree::ParseTreeVisitorCompat;
 use std::rc::Rc;
 

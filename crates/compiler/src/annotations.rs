@@ -47,7 +47,11 @@ pub(crate) struct NodeAnnotation {
 }
 
 impl Annotations {
-    pub(crate) fn type_of<'input>(&self, file: usize, ctx: &(impl ParserRuleContext<'input> + ?Sized)) -> Ty {
+    pub(crate) fn type_of<'input>(
+        &self,
+        file: usize,
+        ctx: &(impl ParserRuleContext<'input> + ?Sized),
+    ) -> Ty {
         self.types
             .get(&(file, ctx.get_hashable_interval()))
             .cloned()
@@ -63,7 +67,11 @@ impl Annotations {
     }
 
     /// The line ID that was registered for the line statement in the string table.
-    pub(crate) fn line_id<'input>(&self, file: usize, ctx: &(impl ParserRuleContext<'input> + ?Sized)) -> LineId {
+    pub(crate) fn line_id<'input>(
+        &self,
+        file: usize,
+        ctx: &(impl ParserRuleContext<'input> + ?Sized),
+    ) -> LineId {
         self.line(file, ctx)
             .expect("Internal error: line does not have a line ID")
             .line_id
@@ -115,7 +123,10 @@ impl<'input> SourceFile<'input> {
     }
 
     /// An empty diagnostic that points at the given context.
-    pub(crate) fn diagnostic_at(&self, ctx: &(impl ParserRuleContext<'input> + ?Sized)) -> Diagnostic {
+    pub(crate) fn diagnostic_at(
+        &self,
+        ctx: &(impl ParserRuleContext<'input> + ?Sized),
+    ) -> Diagnostic {
         self.diagnostic_at_range(ctx_range(ctx))
     }
 
@@ -124,7 +135,9 @@ impl<'input> SourceFile<'input> {
     }
 }
 
-pub(crate) fn ctx_range<'input>(ctx: &(impl ParserRuleContext<'input> + ?Sized)) -> Range<Position> {
+pub(crate) fn ctx_range<'input>(
+    ctx: &(impl ParserRuleContext<'input> + ?Sized),
+) -> Range<Position> {
     token_range(&*ctx.start(), &*ctx.stop())
 }
 

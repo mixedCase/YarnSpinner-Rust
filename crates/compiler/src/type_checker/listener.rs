@@ -3,9 +3,9 @@
 use super::*;
 use crate::annotations::*;
 use crate::diagnostic_descriptors::{self as descriptors, DiagnosticDescriptor};
+use crate::listeners::token_range;
 use crate::prelude::generated::yarnspinnerparser::*;
 use crate::prelude::generated::yarnspinnerparserlistener::YarnSpinnerParserListener;
-use crate::listeners::token_range;
 use crate::prelude::*;
 use antlr4rust::parser_rule_context::ParserRuleContext;
 use antlr4rust::token::Token;
@@ -170,13 +170,17 @@ impl<'input> TypeCheckerListener<'input> {
         a: Ty,
         b: Ty,
     ) {
-        self.add_type_constraint(ConstraintKind::Equality(a.clone(), b.clone()), ctx, move |s| {
-            format!(
-                "Operation '{op}'s values must both be the same type, not {} and {}",
-                a.substitute(s),
-                b.substitute(s)
-            )
-        });
+        self.add_type_constraint(
+            ConstraintKind::Equality(a.clone(), b.clone()),
+            ctx,
+            move |s| {
+                format!(
+                    "Operation '{op}'s values must both be the same type, not {} and {}",
+                    a.substitute(s),
+                    b.substitute(s)
+                )
+            },
+        );
     }
 }
 
@@ -235,8 +239,11 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
         };
         let expression_type = self.type_of(expression.as_ref());
         {
-            let (name, type_identifier, expression_type) =
-                (display_name.clone(), type_identifier.clone(), expression_type.clone());
+            let (name, type_identifier, expression_type) = (
+                display_name.clone(),
+                type_identifier.clone(),
+                expression_type.clone(),
+            );
             let expression_text = expression.get_text();
             self.add_type_constraint(
                 ConstraintKind::Equality(type_identifier.clone(), expression_type.clone()),
@@ -257,13 +264,16 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
                 _ => None,
             };
             let expression_text = expression.get_text_with_whitespace(self.file.parsed.tokens());
-            let (name, type_identifier_for_message) = (display_name.clone(), type_identifier.clone());
+            let (name, type_identifier_for_message) =
+                (display_name.clone(), type_identifier.clone());
             let declared_type_name = language_type
                 .as_ref()
                 .map(Ty::name)
                 .unwrap_or_else(|| type_name.clone());
             let kind = match language_type {
-                Some(language_type) => ConstraintKind::Equality(type_identifier.clone(), language_type),
+                Some(language_type) => {
+                    ConstraintKind::Equality(type_identifier.clone(), language_type)
+                }
                 // Not a built-in type, so it must be the name of a user-defined one
                 None => ConstraintKind::HasName(type_identifier.clone(), type_name),
             };
@@ -286,8 +296,11 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
 
         if let Some(existing) = existing {
             // The variable was used before it was declared. The uses must agree with the declaration.
-            let (name, declared, used) =
-                (display_name.clone(), type_identifier.clone(), existing.ty.clone());
+            let (name, declared, used) = (
+                display_name.clone(),
+                type_identifier.clone(),
+                existing.ty.clone(),
+            );
             self.add_type_constraint(
                 ConstraintKind::Equality(existing.ty.clone(), type_identifier.clone()),
                 ctx,
@@ -309,7 +322,9 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
             default_value: None,
             source_file_name: DeclarationSource::File(self.file.name.clone()),
             source_node_name: self.current_node_name.clone(),
-            range: variable_context.as_ref().map(|variable| ctx_range(variable.as_ref())),
+            range: variable_context
+                .as_ref()
+                .map(|variable| ctx_range(variable.as_ref())),
             is_implicit: false,
             is_inline_expansion: false,
             initial_value: Some((self.file.index, expression)),
@@ -452,14 +467,17 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
         let cant_be_used = {
             let (op, a) = (op.clone(), a.clone());
             move |s: &Substitution| {
-                format!("Operation '{op}' can't be used with a value of type {}", a.substitute(s))
+                format!(
+                    "Operation '{op}' can't be used with a value of type {}",
+                    a.substitute(s)
+                )
             }
         };
         let kind = match permitted_types {
             [single] => ConstraintKind::Equality(ty.clone(), single.clone()),
-            types => ConstraintKind::AnyEquality(
-                types.iter().map(|t| (ty.clone(), t.clone())).collect(),
-            ),
+            types => {
+                ConstraintKind::AnyEquality(types.iter().map(|t| (ty.clone(), t.clone())).collect())
+            }
         };
         self.add_type_constraint(kind, ctx, cant_be_used.clone());
         // ...and the same type as both of the operands.
@@ -485,7 +503,10 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
         {
             let (op, a) = (op.clone(), a.clone());
             self.add_type_constraint(ConstraintKind::Equality(ty, a.clone()), ctx, move |s| {
-                format!("Operation '{op}' can't be used with a value of type {}", a.substitute(s))
+                format!(
+                    "Operation '{op}' can't be used with a value of type {}",
+                    a.substitute(s)
+                )
             });
         }
         self.check_binary_operands(ctx, op, a, b);
@@ -508,7 +529,8 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
     }
 
     fn exit_expAndOrXor(&mut self, ctx: &ExpAndOrXorContext<'input>) {
-        let (Some(expression_0), Some(expression_1)) = (ctx.expression(0), ctx.expression(1)) else {
+        let (Some(expression_0), Some(expression_1)) = (ctx.expression(0), ctx.expression(1))
+        else {
             self.set_type(ctx, Ty::Error);
             return;
         };
@@ -534,18 +556,22 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
         self.set_type(ctx, Ty::Boolean);
         let ty = self.type_of_optional(ctx.expression());
         let op = ctx.op.as_ref().unwrap().get_text().to_owned();
-        self.add_type_constraint(ConstraintKind::Equality(ty.clone(), Ty::Boolean), ctx, move |s| {
-            format!("{op} operand must be Bool, not {}", ty.substitute(s))
-        });
+        self.add_type_constraint(
+            ConstraintKind::Equality(ty.clone(), Ty::Boolean),
+            ctx,
+            move |s| format!("{op} operand must be Bool, not {}", ty.substitute(s)),
+        );
     }
 
     fn exit_expNegative(&mut self, ctx: &ExpNegativeContext<'input>) {
         self.set_type(ctx, Ty::Number);
         let ty = self.type_of_optional(ctx.expression());
         let op = ctx.op.as_ref().unwrap().get_text().to_owned();
-        self.add_type_constraint(ConstraintKind::Equality(ty.clone(), Ty::Number), ctx, move |s| {
-            format!("{op} operand must be Number, not {}", ty.substitute(s))
-        });
+        self.add_type_constraint(
+            ConstraintKind::Equality(ty.clone(), Ty::Number),
+            ctx,
+            move |s| format!("{op} operand must be Number, not {}", ty.substitute(s)),
+        );
     }
 
     fn exit_expValue(&mut self, ctx: &ExpValueContext<'input>) {
@@ -672,11 +698,24 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
         let actual = parameters.len();
         let expected = function_type.parameters.len();
         if actual != expected && function_type.variadic_parameter_type.is_none() {
-            let plural = |count: usize| if count == 1 { "parameter" } else { "parameters" };
+            let plural = |count: usize| {
+                if count == 1 {
+                    "parameter"
+                } else {
+                    "parameters"
+                }
+            };
             let message = if is_implicit {
-                format!("{display_name} was called elsewhere with {expected} {}, but is called with {actual} {} here", plural(expected), plural(actual))
+                format!(
+                    "{display_name} was called elsewhere with {expected} {}, but is called with {actual} {} here",
+                    plural(expected),
+                    plural(actual)
+                )
             } else {
-                format!("{display_name} expects {expected} {}, not {actual}", plural(expected))
+                format!(
+                    "{display_name} expects {expected} {}, not {actual}",
+                    plural(expected)
+                )
             };
             self.add_diagnostic(
                 at_function_name,
@@ -736,7 +775,10 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
         let Some(condition) = ctx.line_condition() else {
             return;
         };
-        if !matches!(condition.as_ref(), Line_conditionContextAll::LineOnceConditionContext(_)) {
+        if !matches!(
+            condition.as_ref(),
+            Line_conditionContextAll::LineOnceConditionContext(_)
+        ) {
             return;
         }
         let Some(line_id) = self
@@ -747,8 +789,7 @@ impl<'input> YarnSpinnerParserListener<'input> for TypeCheckerListener<'input> {
         else {
             return;
         };
-        let once_variable_name =
-            Library::generate_unique_content_viewed_variable_name(&line_id.0);
+        let once_variable_name = Library::generate_unique_content_viewed_variable_name(&line_id.0);
         let description = format!(
             "'once' line condition for line ID {line_id}, in file {}, node {}, line {}",
             self.file.name,

@@ -139,7 +139,12 @@ fn rust_compiler_generates_same_programs_as_ysc() {
                     .iter()
                     .zip(&actual_node.instructions)
                     .position(|(a, b)| a != b)
-                    .unwrap_or(expected_node.instructions.len().min(actual_node.instructions.len()));
+                    .unwrap_or(
+                        expected_node
+                            .instructions
+                            .len()
+                            .min(actual_node.instructions.len()),
+                    );
                 mismatches.push(format!(
                     "{test_case}/{name}: instruction {first_difference} differs ({} vs {} instructions)\n  ysc:  {:?}\n  rust: {:?}",
                     expected_node.instructions.len(),

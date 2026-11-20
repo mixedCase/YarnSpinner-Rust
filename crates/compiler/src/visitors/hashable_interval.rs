@@ -1,12 +1,9 @@
-use crate::parser::generated::yarnspinnerparser::YarnSpinnerParserContext;
 use antlr4rust::interval_set::Interval;
 use antlr4rust::parser_rule_context::ParserRuleContext;
 use antlr4rust::token::Token;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
-use yarnspinner_core::prelude::*;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub(crate) struct HashableInterval(Interval);

@@ -1,14 +1,11 @@
 //! Contains functionality provided in the C# implementation of ANTLR but not (yet?) in antlr4rust.
 
 use crate::parser::ActualTokenStream;
-use crate::prelude::generated::yarnspinnerparser::YarnSpinnerParserContext;
 use antlr4rust::InputStream;
 use antlr4rust::int_stream::IntStream;
 use antlr4rust::token::{CommonToken, TOKEN_DEFAULT_CHANNEL, Token};
 use antlr4rust::token_factory::{CommonTokenFactory, TokenFactory};
 use antlr4rust::token_stream::TokenStream;
-use better_any::TidExt;
-use std::rc::Rc;
 
 pub(crate) trait CommonTokenStreamExt<'input> {
     /// Collect all tokens on specified channel to the left of
@@ -181,24 +178,6 @@ impl<'input> PrivateCommonTokenStreamExt<'input> for ActualTokenStream<'input> {
         }
         token_list
     }
-}
-
-pub(crate) trait YarnSpinnerParserContextExt<'input>:
-    YarnSpinnerParserContext<'input>
-{
-    /// Same as [`YarnSpinnerParserContext::child_of_type`], but without the [`Sized`] requirement.
-    fn child_of_type_unsized<T: YarnSpinnerParserContext<'input>>(
-        &self,
-        pos: usize,
-    ) -> Option<Rc<T>> {
-        self.get_children()
-            .filter_map(|child| child.downcast_rc::<T>().ok())
-            .nth(pos)
-    }
-}
-impl<'input, T: YarnSpinnerParserContext<'input> + ?Sized> YarnSpinnerParserContextExt<'input>
-    for T
-{
 }
 
 pub(crate) fn create_common_token<'a>(

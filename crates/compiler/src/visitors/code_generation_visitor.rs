@@ -58,7 +58,10 @@ impl NodeEmitter {
     pub(crate) fn jump_to_here(&mut self, index: usize) {
         let destination = self.next_instruction();
         let is_jump = self.node.instructions[index].set_destination(destination);
-        assert!(is_jump, "Internal error: instruction {index} has no destination");
+        assert!(
+            is_jump,
+            "Internal error: instruction {index} has no destination"
+        );
     }
 
     pub(crate) fn add_header(&mut self, key: impl Into<String>, value: impl Into<String>) {
@@ -110,7 +113,8 @@ pub(crate) fn token_to_operator(token: i32) -> Option<Operator> {
 
 /// The name of the library function that implements `operator` for values of type `ty`.
 pub(crate) fn get_function_name(ty: &Ty, operator: Operator) -> String {
-    ty.to_type().get_canonical_name_for_method(&operator.to_string())
+    ty.to_type()
+        .get_canonical_name_for_method(&operator.to_string())
 }
 
 pub(crate) fn position_of(token: &(impl Token + ?Sized)) -> Option<Position> {
@@ -342,7 +346,9 @@ impl<'a, 'input: 'a> CodeGenerationVisitor<'a, 'input> {
                     &self.line_id(line_statement).0,
                 );
                 // Test to see if the 'once' variable for this content is false
-                let position = once.COMMAND_ONCE().and_then(|token| position_of(&*token.symbol));
+                let position = once
+                    .COMMAND_ONCE()
+                    .and_then(|token| position_of(&*token.symbol));
                 emit_once_variable_test(self.emitter, position, &once_variable);
 
                 // If the condition has an expression, evaluate that too and 'and' it with the 'once' test
@@ -361,12 +367,18 @@ impl<'a, 'input: 'a> CodeGenerationVisitor<'a, 'input> {
         }
     }
 
-    fn emit_jump_to_named_node(&mut self, position: Option<Position>, node_name: String, detour: bool) {
+    fn emit_jump_to_named_node(
+        &mut self,
+        position: Option<Position>,
+        node_name: String,
+        detour: bool,
+    ) {
         if detour {
             self.emitter
                 .emit(position, DetourToNodeInstruction { node_name });
         } else {
-            self.emitter.emit(position, RunNodeInstruction { node_name });
+            self.emitter
+                .emit(position, RunNodeInstruction { node_name });
         }
     }
 
@@ -408,15 +420,16 @@ impl<'a, 'input: 'a> YarnSpinnerParserVisitorCompat<'input> for CodeGenerationVi
 
         // Jump over this line if the line's condition is false.
         let jump_if_condition_false = condition.as_ref().map(|_| {
-            self.emitter
-                .emit(condition_position, JumpIfFalseInstruction { destination: -1 })
+            self.emitter.emit(
+                condition_position,
+                JumpIfFalseInstruction { destination: -1 },
+            )
         });
 
         if let Some(Line_conditionContextAll::LineOnceConditionContext(_)) = condition.as_deref() {
             // The line has a 'once' condition that has evaluated to true.
             // Set the corresponding variable for it so that it doesn't appear again.
-            let once_variable =
-                Library::generate_unique_content_viewed_variable_name(&line_id.0);
+            let once_variable = Library::generate_unique_content_viewed_variable_name(&line_id.0);
             emit_set_once_variable(self.emitter, condition_position, &once_variable);
         }
 
@@ -698,7 +711,8 @@ impl<'a, 'input: 'a> YarnSpinnerParserVisitorCompat<'input> for CodeGenerationVi
                 None => {
                     // There is no expression; push 'true' onto the stack and note that it had a complexity of zero
                     once_variables.push(None);
-                    self.emitter.emit(position, PushBoolInstruction { value: true });
+                    self.emitter
+                        .emit(position, PushBoolInstruction { value: true });
                     0
                 }
             };
@@ -900,7 +914,12 @@ impl<'a, 'input: 'a> YarnSpinnerParserVisitorCompat<'input> for CodeGenerationVi
 
     fn visit_valueString(&mut self, ctx: &ValueStringContext<'input>) -> Self::Return {
         // [sic] stripping the " off the front and back actually is this what we want?
-        let value = ctx.STRING().unwrap().get_text().trim_matches('"').to_owned();
+        let value = ctx
+            .STRING()
+            .unwrap()
+            .get_text()
+            .trim_matches('"')
+            .to_owned();
         self.emitter
             .emit(Self::start_of(ctx), PushStringInstruction { value });
     }
@@ -932,7 +951,9 @@ impl<'a, 'input: 'a> YarnSpinnerParserVisitorCompat<'input> for CodeGenerationVi
         });
         let position = Self::start_of(ctx);
         match case.value.clone() {
-            YarnValue::String(value) => self.emitter.emit(position, PushStringInstruction { value }),
+            YarnValue::String(value) => {
+                self.emitter.emit(position, PushStringInstruction { value })
+            }
             YarnValue::Number(value) => self.emitter.emit(position, PushFloatInstruction { value }),
             YarnValue::Boolean(_) => panic!(
                 "Internal error: {ty}.{member_name} has a boolean raw value, which is not allowed."
@@ -956,7 +977,11 @@ impl<'a, 'input: 'a> YarnSpinnerParserVisitorCompat<'input> for CodeGenerationVi
 
     /// A <<jump>> command, which immediately jumps to another node, given an expression that resolves to a node's name.
     fn visit_jumpToExpression(&mut self, ctx: &JumpToExpressionContext<'input>) -> Self::Return {
-        self.emit_jump_to_expression(Self::start_of(ctx), ctx.expression().unwrap().as_ref(), false);
+        self.emit_jump_to_expression(
+            Self::start_of(ctx),
+            ctx.expression().unwrap().as_ref(),
+            false,
+        );
     }
 
     fn visit_detourToNodeName(&mut self, ctx: &DetourToNodeNameContext<'input>) -> Self::Return {
@@ -964,8 +989,15 @@ impl<'a, 'input: 'a> YarnSpinnerParserVisitorCompat<'input> for CodeGenerationVi
         self.emit_jump_to_named_node(Self::start_of(ctx), destination, true);
     }
 
-    fn visit_detourToExpression(&mut self, ctx: &DetourToExpressionContext<'input>) -> Self::Return {
-        self.emit_jump_to_expression(Self::start_of(ctx), ctx.expression().unwrap().as_ref(), true);
+    fn visit_detourToExpression(
+        &mut self,
+        ctx: &DetourToExpressionContext<'input>,
+    ) -> Self::Return {
+        self.emit_jump_to_expression(
+            Self::start_of(ctx),
+            ctx.expression().unwrap().as_ref(),
+            true,
+        );
     }
 
     fn visit_return_statement(&mut self, ctx: &Return_statementContext<'input>) -> Self::Return {
@@ -978,7 +1010,12 @@ impl<'a, 'input: 'a> YarnSpinnerParserVisitorCompat<'input> for CodeGenerationVi
             .context
             .annotations
             .once_variables
-            .get(&(self.file, crate::visitors::GetHashableInterval::get_hashable_interval(primary_clause.as_ref())))
+            .get(&(
+                self.file,
+                crate::visitors::GetHashableInterval::get_hashable_interval(
+                    primary_clause.as_ref(),
+                ),
+            ))
             .expect("Internal error: once statement primary clause is missing a once variable")
             .clone();
         let position = Self::start_of(primary_clause.as_ref());

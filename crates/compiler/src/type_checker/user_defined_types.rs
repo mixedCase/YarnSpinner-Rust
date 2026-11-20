@@ -6,7 +6,6 @@ use crate::diagnostic_descriptors as descriptors;
 use crate::prelude::generated::yarnspinnerparser::*;
 use crate::prelude::generated::yarnspinnerparserlistener::YarnSpinnerParserListener;
 use crate::prelude::*;
-use antlr4rust::parser_rule_context::ParserRuleContext;
 use antlr4rust::token::Token;
 use antlr4rust::tree::ParseTreeListener;
 use std::rc::Rc;
@@ -69,9 +68,13 @@ impl<'input> YarnSpinnerParserListener<'input> for UserDefinedTypesListener<'inp
             let value = case.rawValue.as_ref().map(|raw_value| {
                 let value = literal_value(raw_value);
                 if value.is_none() {
-                    self.diagnostics.push(self.file.diagnostic_at(ctx).described(
-                        descriptors::INVALID_LITERAL_VALUE.create(&["Expected a constant type"]),
-                    ));
+                    self.diagnostics
+                        .push(
+                            self.file.diagnostic_at(ctx).described(
+                                descriptors::INVALID_LITERAL_VALUE
+                                    .create(&["Expected a constant type"]),
+                            ),
+                        );
                 }
                 value
             });
@@ -122,7 +125,11 @@ impl<'input> YarnSpinnerParserListener<'input> for UserDefinedTypesListener<'inp
                 }
                 let mut any_duplicate_values = false;
                 for case in &cases {
-                    let duplicates = cases.iter().filter(|other| other.value == case.value).count() - 1;
+                    let duplicates = cases
+                        .iter()
+                        .filter(|other| other.value == case.value)
+                        .count()
+                        - 1;
                     if duplicates > 0 {
                         any_duplicate_values = true;
                         let value = case.value.clone().map(String::from).unwrap_or_default();

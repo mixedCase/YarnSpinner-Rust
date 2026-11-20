@@ -7,10 +7,9 @@ mod test_base;
 
 #[test]
 fn test_no_options_line_not_tagged() {
-    let result =
-        Compiler::from_source("title:Start\n---\nline without options #line:1\n===\n")
-            .compile()
-            .unwrap();
+    let result = Compiler::from_source("title:Start\n---\nline without options #line:1\n===\n")
+        .compile()
+        .unwrap();
 
     let info = &result.string_table[&"line:1".into()];
     assert!(!contains_last_line_tag(info));

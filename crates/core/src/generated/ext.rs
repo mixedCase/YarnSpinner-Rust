@@ -232,20 +232,22 @@ impl Program {
 
     /// Returns the nodes that compute the values of smart variables. The node name is the variable name.
     pub fn smart_variable_nodes(&self) -> impl Iterator<Item = &Node> {
-        self.nodes
-            .values()
-            .filter(|node| node.tags().iter().any(|tag| tag == Self::SMART_VARIABLE_NODE_TAG))
+        self.nodes.values().filter(|node| {
+            node.tags()
+                .iter()
+                .any(|tag| tag == Self::SMART_VARIABLE_NODE_TAG)
+        })
     }
 
     /// Returns how the value of the variable `name` is determined.
     pub fn variable_kind(&self, name: &str) -> VariableKind {
         if self.initial_values.contains_key(name) {
             VariableKind::Stored
-        } else if self
-            .nodes
-            .get(name)
-            .is_some_and(|node| node.tags().iter().any(|tag| tag == Self::SMART_VARIABLE_NODE_TAG))
-        {
+        } else if self.nodes.get(name).is_some_and(|node| {
+            node.tags()
+                .iter()
+                .any(|tag| tag == Self::SMART_VARIABLE_NODE_TAG)
+        }) {
             VariableKind::Smart
         } else {
             VariableKind::Unknown

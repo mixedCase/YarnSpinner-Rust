@@ -45,13 +45,18 @@ impl Constraint {
         let kind = match &self.kind {
             ConstraintKind::Equality(a, b) => ConstraintKind::Equality(s(a), s(b)),
             ConstraintKind::Convertible(from, to) => ConstraintKind::Convertible(s(from), s(to)),
-            ConstraintKind::HasMember(ty, member) => ConstraintKind::HasMember(s(ty), member.clone()),
+            ConstraintKind::HasMember(ty, member) => {
+                ConstraintKind::HasMember(s(ty), member.clone())
+            }
             ConstraintKind::HasName(ty, name) => ConstraintKind::HasName(s(ty), name.clone()),
             ConstraintKind::AnyEquality(equalities) => {
                 ConstraintKind::AnyEquality(equalities.iter().map(|(a, b)| (s(a), s(b))).collect())
             }
         };
-        Self { kind, ..self.clone() }
+        Self {
+            kind,
+            ..self.clone()
+        }
     }
 
     /// Whether the constraint holds no matter what the type variables turn out to be.
@@ -187,7 +192,9 @@ impl Formula {
             Formula::True => true,
             Formula::False => false,
             Formula::Eq(a, b) => a == b,
-            Formula::And(children) => !children.is_empty() && children.iter().all(Self::is_tautological),
+            Formula::And(children) => {
+                !children.is_empty() && children.iter().all(Self::is_tautological)
+            }
             Formula::Or(children) => children.iter().any(Self::is_tautological),
         }
     }
@@ -224,25 +231,27 @@ impl Formula {
     /// Converts to disjunctive normal form: a list of alternatives, of which one must hold.
     fn into_alternatives(self) -> Vec<Formula> {
         match self {
-            Formula::Or(children) => cartesian_product(
-                children.into_iter().map(Self::into_alternatives).collect(),
-            )
-            .into_iter()
-            // sic: flattening the product means that one unsatisfiable (empty) child makes
-            // the whole disjunction unsatisfiable, like in the original.
-            .flatten()
-            .fold(Vec::new(), |mut distinct, alternative| {
-                if !distinct.contains(&alternative) {
-                    distinct.push(alternative);
-                }
-                distinct
-            }),
-            Formula::And(children) => cartesian_product(
-                children.into_iter().map(Self::into_alternatives).collect(),
-            )
-            .into_iter()
-            .map(|product| Formula::And(product.into_iter().flat_map(Self::flatten_and).collect()))
-            .collect(),
+            Formula::Or(children) => {
+                cartesian_product(children.into_iter().map(Self::into_alternatives).collect())
+                    .into_iter()
+                    // sic: flattening the product means that one unsatisfiable (empty) child makes
+                    // the whole disjunction unsatisfiable, like in the original.
+                    .flatten()
+                    .fold(Vec::new(), |mut distinct, alternative| {
+                        if !distinct.contains(&alternative) {
+                            distinct.push(alternative);
+                        }
+                        distinct
+                    })
+            }
+            Formula::And(children) => {
+                cartesian_product(children.into_iter().map(Self::into_alternatives).collect())
+                    .into_iter()
+                    .map(|product| {
+                        Formula::And(product.into_iter().flat_map(Self::flatten_and).collect())
+                    })
+                    .collect()
+            }
             leaf => vec![leaf],
         }
     }
@@ -311,7 +320,9 @@ pub(crate) fn try_solve(
             Formula::Eq(a, b) => try_unify(a, b, substitution, &mut added),
             Formula::True => true,
             Formula::False => false,
-            other => unreachable!("Internal error: didn't expect to see {other:?} in a solver candidate"),
+            other => {
+                unreachable!("Internal error: didn't expect to see {other:?} in a solver candidate")
+            }
         });
         let additions: Vec<_> = added
             .into_iter()
@@ -366,7 +377,13 @@ fn try_merge_substitutions(additions: &[Vec<(Rc<str>, Ty)>]) -> Option<Vec<(Rc<s
             None => merged.push((variable.clone(), vec![ty.clone()])),
         }
     }
-    let depth = |ty: &Ty| if ty.is_var() { usize::MAX } else { ty.type_depth() };
+    let depth = |ty: &Ty| {
+        if ty.is_var() {
+            usize::MAX
+        } else {
+            ty.type_depth()
+        }
+    };
     merged
         .into_iter()
         .map(|(variable, candidates)| {
@@ -443,7 +460,10 @@ fn occurs_check(variable: &Rc<str>, term: &Ty, substitution: &Substitution) -> b
 }
 
 /// Applies what the solver knows to the constraints and drops the ones that are now known to hold.
-pub(crate) fn apply_solution(substitution: &Substitution, constraints: &[Constraint]) -> Vec<Constraint> {
+pub(crate) fn apply_solution(
+    substitution: &Substitution,
+    constraints: &[Constraint],
+) -> Vec<Constraint> {
     constraints
         .iter()
         .map(|constraint| constraint.apply_substitution(substitution))
@@ -472,7 +492,12 @@ mod tests {
             constraint(ConstraintKind::Equality(Ty::var("a"), Ty::var("b"))),
             constraint(ConstraintKind::Equality(Ty::var("b"), Ty::Number)),
         ];
-        assert!(try_solve(&constraints, &BUILTIN_TYPES, &mut vec![], &mut substitution));
+        assert!(try_solve(
+            &constraints,
+            &BUILTIN_TYPES,
+            &mut vec![],
+            &mut substitution
+        ));
         assert_eq!(Ty::Number, Ty::var("a").substitute(&substitution));
         assert!(apply_solution(&substitution, &constraints).is_empty());
     }
@@ -484,7 +509,12 @@ mod tests {
             constraint(ConstraintKind::Equality(Ty::var("a"), Ty::String)),
             constraint(ConstraintKind::Equality(Ty::var("a"), Ty::Number)),
         ];
-        assert!(!try_solve(&constraints, &BUILTIN_TYPES, &mut vec![], &mut substitution));
+        assert!(!try_solve(
+            &constraints,
+            &BUILTIN_TYPES,
+            &mut vec![],
+            &mut substitution
+        ));
     }
 
     #[test]
@@ -497,7 +527,12 @@ mod tests {
             ])),
             constraint(ConstraintKind::Equality(Ty::var("a"), Ty::String)),
         ];
-        assert!(try_solve(&constraints, &BUILTIN_TYPES, &mut vec![], &mut substitution));
+        assert!(try_solve(
+            &constraints,
+            &BUILTIN_TYPES,
+            &mut vec![],
+            &mut substitution
+        ));
         assert_eq!(Ty::String, Ty::var("a").substitute(&substitution));
     }
 
@@ -505,8 +540,21 @@ mod tests {
     fn convertible_to_any_keeps_the_specific_type() {
         let mut substitution = Substitution::new();
         let constraints = [constraint(ConstraintKind::Convertible(Ty::Number, Ty::Any))];
-        assert!(try_solve(&constraints, &BUILTIN_TYPES, &mut vec![], &mut substitution));
-        let constraints = [constraint(ConstraintKind::Convertible(Ty::String, Ty::Number))];
-        assert!(!try_solve(&constraints, &BUILTIN_TYPES, &mut vec![], &mut substitution));
+        assert!(try_solve(
+            &constraints,
+            &BUILTIN_TYPES,
+            &mut vec![],
+            &mut substitution
+        ));
+        let constraints = [constraint(ConstraintKind::Convertible(
+            Ty::String,
+            Ty::Number,
+        ))];
+        assert!(!try_solve(
+            &constraints,
+            &BUILTIN_TYPES,
+            &mut vec![],
+            &mut substitution
+        ));
     }
 }

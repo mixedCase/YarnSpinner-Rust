@@ -68,7 +68,11 @@ impl Ty {
             Ty::Enum(enum_type) => enum_type.name.clone(),
             Ty::Function(function) => {
                 let parameters: Vec<_> = function.parameters.iter().map(Ty::name).collect();
-                format!("({}) -> {}", parameters.join(", "), function.return_type.name())
+                format!(
+                    "({}) -> {}",
+                    parameters.join(", "),
+                    function.return_type.name()
+                )
             }
         }
     }
@@ -146,7 +150,11 @@ impl Ty {
             Ty::String => Type::String,
             Ty::Enum(enum_type) => Type::Enum(enum_type.as_ref().clone()),
             Ty::Function(function) => Type::Function(FunctionType {
-                parameters: function.parameters.iter().map(|p| Some(p.to_type())).collect(),
+                parameters: function
+                    .parameters
+                    .iter()
+                    .map(|p| Some(p.to_type()))
+                    .collect(),
                 return_type: Box::new(Some(function.return_type.to_type())),
                 variadic_parameter_type: Box::new(
                     function.variadic_parameter_type.as_ref().map(Ty::to_type),
@@ -168,7 +176,11 @@ impl From<&Type> for Ty {
             Type::Function(function) => Ty::Function(Rc::new(FnTy {
                 parameters: function.parameters.iter().map(optional).collect(),
                 return_type: optional(&function.return_type),
-                variadic_parameter_type: function.variadic_parameter_type.as_ref().as_ref().map(Ty::from),
+                variadic_parameter_type: function
+                    .variadic_parameter_type
+                    .as_ref()
+                    .as_ref()
+                    .map(Ty::from),
             })),
         }
     }

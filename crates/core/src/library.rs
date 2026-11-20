@@ -289,7 +289,10 @@ fn format_like_dotnet(format: String, argument: YarnValue) -> String {
             '{' => {
                 let item: String = chars.by_ref().take_while(|c| *c != '}').collect();
                 let index = item.split([',', ':']).next().unwrap_or_default().trim();
-                assert_eq!("0", index, "format: only the placeholder {{0}} exists, got {{{item}}}");
+                assert_eq!(
+                    "0", index,
+                    "format: only the placeholder {{0}} exists, got {{{item}}}"
+                );
                 result.push_str(&argument);
             }
             c => result.push(c),
@@ -305,10 +308,18 @@ pub fn crc32_checksum_string(input: &str) -> String {
     for byte in input.bytes() {
         crc ^= byte as u32;
         for _ in 0..8 {
-            crc = if crc & 1 == 1 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
         }
     }
-    (!crc).to_le_bytes().iter().map(|b| format!("{b:02x}")).collect()
+    (!crc)
+        .to_le_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 trait FloatExt: Copy {
@@ -333,7 +344,10 @@ mod tests {
 
     #[test]
     fn formats_like_dotnet() {
-        assert_eq!("a 1 {b}", format_like_dotnet("a {0} {{b}}".into(), 1.0.into()));
+        assert_eq!(
+            "a 1 {b}",
+            format_like_dotnet("a {0} {{b}}".into(), 1.0.into())
+        );
         assert_eq!("2639f4cb", crc32_checksum_string("123456789"));
     }
 

@@ -154,7 +154,7 @@ impl TestBase {
     /// Runs the test plan: every run starts the dialogue, lets it run to its end
     /// and compares what happened with the expectations of the run.
     pub fn run_standard_testcase(&mut self) -> &mut Self {
-        let test_plan = self.test_plan.clone().unwrap_or_else(TestPlan::new);
+        let test_plan = self.test_plan.clone().unwrap_or_default();
         for run in &test_plan.runs {
             self.evaluate_run(run, self.test_plan.is_some());
         }
@@ -211,7 +211,10 @@ impl TestBase {
                     DialogueEvent::Options(options) => {
                         println!("Options:");
                         for option in options {
-                            println!(" - {} (available: {})", option.line.text, option.is_available);
+                            println!(
+                                " - {} (available: {})",
+                                option.line.text, option.is_available
+                            );
                             moments.push_back(Step::ExpectOption {
                                 hashtags: self.metadata(&option.line.id),
                                 text: option.line.text,
@@ -222,7 +225,9 @@ impl TestBase {
                         let selection = match selections.pop_front() {
                             Some(selection) => selection,
                             None if !check_expectations => Some(0),
-                            None => panic!("Received options, but the test plan has no selection left"),
+                            None => {
+                                panic!("Received options, but the test plan has no selection left")
+                            }
                         };
                         println!("[Selecting option {selection:?}]");
                         match selection {
@@ -260,7 +265,10 @@ impl TestBase {
                 .unwrap_or_else(|| panic!("Expected {step:?}, but the dialogue was already over"));
             let contains_all = |actual: &[String], expected: &[String]| {
                 for hashtag in expected {
-                    assert!(actual.contains(hashtag), "Expected {step:?}, got {moment:?}");
+                    assert!(
+                        actual.contains(hashtag),
+                        "Expected {step:?}, got {moment:?}"
+                    );
                 }
             };
             match (step, &moment) {

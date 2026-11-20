@@ -8,8 +8,8 @@
 //!
 #![warn(missing_docs, missing_debug_implementations)]
 
-mod collections;
 pub(crate) mod annotations;
+mod collections;
 pub(crate) mod compiler;
 pub(crate) mod diagnostic_descriptors;
 pub(crate) mod error_strategy;

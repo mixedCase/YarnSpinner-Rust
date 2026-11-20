@@ -1,6 +1,5 @@
 //! Adapted from <https://github.com/YarnSpinnerTool/YarnSpinner/blob/da39c7195107d8211f21c263e4084f773b84eaff/YarnSpinner.Compiler/ErrorStrategy.cs>
 
-use crate::prelude::generated::yarnspinnerlexer;
 use crate::prelude::generated::yarnspinnerparser;
 use crate::prelude::*;
 use antlr4rust::errors::{ANTLRError, InputMisMatchError, NoViableAltError};
@@ -91,7 +90,8 @@ impl<'input, Ctx: ParserNodeType<'input>> ErrorStrategy<'input, Ctx> {
             && recognizer.get_parser_rule_context().get_rule_index()
                 == yarnspinnerparser::RULE_statement
             && e.start_token.token_type == yarnspinnerparser::YarnSpinnerParser_COMMAND_START
-            && e.base.offending_token.token_type == yarnspinnerparser::YarnSpinnerParser_COMMAND_ELSE
+            && e.base.offending_token.token_type
+                == yarnspinnerparser::YarnSpinnerParser_COMMAND_ELSE
         {
             // We are inside an if statement, we're attempting to parse a
             // statement, and we got an '<<', 'else', and we weren't able
@@ -147,7 +147,8 @@ impl<'input, Ctx: ParserNodeType<'input>> ErrorStrategy<'input, Ctx> {
                 }
             }
             yarnspinnerparser::RULE_variable
-                if e.base.offending_token.token_type == yarnspinnerparser::YarnSpinnerParser_FUNC_ID =>
+                if e.base.offending_token.token_type
+                    == yarnspinnerparser::YarnSpinnerParser_FUNC_ID =>
             {
                 // We're parsing a variable (which starts with a '$'),
                 // but we encountered a FUNC_ID (which doesn't). The

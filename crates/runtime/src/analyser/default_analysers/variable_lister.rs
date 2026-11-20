@@ -19,16 +19,17 @@ impl CompiledProgramAnalyser for VariableLister {
     fn diagnose(&mut self, program: &Program) {
         // In each node, find all reads and writes to variables
         let new_variables = program.nodes.values().flat_map(|node| {
-            node.instructions
-                .iter()
-                .filter_map(|instruction| match instruction.instruction_type.as_ref() {
-                    Some(InstructionType::PushVariable(PushVariableInstruction { variable_name })) |
-                    Some(InstructionType::StoreVariable(StoreVariableInstruction { variable_name })) => {
-                        Some(variable_name.clone())
-                    }
+            node.instructions.iter().filter_map(|instruction| {
+                match instruction.instruction_type.as_ref() {
+                    Some(InstructionType::PushVariable(PushVariableInstruction {
+                        variable_name,
+                    }))
+                    | Some(InstructionType::StoreVariable(StoreVariableInstruction {
+                        variable_name,
+                    })) => Some(variable_name.clone()),
                     _ => None,
-                })
-                .map(|operand| operand.try_into().unwrap())
+                }
+            })
         });
         self.variables.extend(new_variables);
     }

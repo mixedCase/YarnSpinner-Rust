@@ -18,29 +18,28 @@ pub mod prelude {
         YarnFn, YarnValue, yarn_library,
     };
     pub use crate::runtime::{
+        BestLeastRecentlyViewedSaliencyStrategy, BestSaliencyStrategy, ContentSaliencyContentType,
+        ContentSaliencyOption, ContentSaliencyStrategy, FirstSaliencyStrategy,
+        RandomBestLeastRecentlyViewedSaliencyStrategy,
+    };
+    pub use crate::runtime::{
         Command as YarnCommand, CompiledProgramAnalyser as YarnAnalyser,
         Context as YarnAnalysisContext, Dialogue, DialogueError, DialogueEvent, DialogueOption,
         Language, Line as YarnLine, MarkupAttribute, MarkupValue, OptionId,
         Result as YarnRuntimeResult, StringTable, TextProvider, VariableStorage,
     };
-    pub use crate::runtime::{
-        BestLeastRecentlyViewedSaliencyStrategy, BestSaliencyStrategy, ContentSaliencyContentType,
-        ContentSaliencyOption, ContentSaliencyStrategy, FirstSaliencyStrategy,
-        RandomBestLeastRecentlyViewedSaliencyStrategy,
-    };
 }
 
 pub mod core {
     //! Core types and traits that are used by both the compiler and runtime.
-    pub use yarnspinner_core::types::{EnumCase, EnumType, FunctionType};
     pub use yarnspinner_core::prelude::{
         CompiledFile, Header, Instruction, IntoYarnValueFromNonYarnValue, InvalidOpCodeError,
         Library, LineId, MetadataLine, Node, Position, Program, Type, UntypedYarnFn, VariableKind,
-        YarnFn,
-        YarnFnParam, YarnFnParamItem, YarnValue, YarnValueCastError, YarnValueWrapper,
+        YarnFn, YarnFnParam, YarnFnParamItem, YarnValue, YarnValueCastError, YarnValueWrapper,
         YarnValueWrapperIter, YscLine, YscLines, YscMetadata, optionality, yarn_fn_type,
         yarn_library,
     };
+    pub use yarnspinner_core::types::{EnumCase, EnumType, FunctionType};
 }
 pub mod compiler {
     //! Types and traits used by the compiler, in particular the [`Compiler`] struct.

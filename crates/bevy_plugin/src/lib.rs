@@ -158,13 +158,13 @@ pub mod prelude {
     pub use yarnspinner::core::{CompiledFile, MetadataLine, YscLine};
     pub(crate) use yarnspinner::prelude::*;
     pub use yarnspinner::prelude::{
-        IntoYarnValueFromNonYarnValue, Language, LineId, MarkupAttribute, MarkupValue, OptionId,
-        VariableStorage, YarnFn, YarnLibrary, YarnValue,
-    };
-    pub use yarnspinner::prelude::{
         BestLeastRecentlyViewedSaliencyStrategy, BestSaliencyStrategy, ContentSaliencyContentType,
         ContentSaliencyOption, ContentSaliencyStrategy, FirstSaliencyStrategy,
         RandomBestLeastRecentlyViewedSaliencyStrategy,
+    };
+    pub use yarnspinner::prelude::{
+        IntoYarnValueFromNonYarnValue, Language, LineId, MarkupAttribute, MarkupValue, OptionId,
+        VariableStorage, YarnFn, YarnLibrary, YarnValue,
     };
     pub use yarnspinner::runtime::VariableStorageError;
     pub(crate) type SystemResult = anyhow::Result<()>;

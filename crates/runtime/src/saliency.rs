@@ -141,7 +141,10 @@ fn increment_view_count(
 ) {
     let count = view_count(content, variable_storage) + 1;
     if let Err(e) = variable_storage.set(content.view_count_key(), (count as f32).into()) {
-        log::error!("Failed to store the view count of {}: {e}", content.content_id);
+        log::error!(
+            "Failed to store the view count of {}: {e}",
+            content.content_id
+        );
     }
 }
 
@@ -243,9 +246,19 @@ mod tests {
         ];
         let id = |o: Option<ContentSaliencyOption>| o.unwrap().content_id;
 
-        assert_eq!("a", id(FirstSaliencyStrategy.query_best_content(&content, &storage)));
-        assert_eq!("b", id(BestSaliencyStrategy.query_best_content(&content, &storage)));
-        assert!(BestSaliencyStrategy.query_best_content(&content[..1], &storage).is_none());
+        assert_eq!(
+            "a",
+            id(FirstSaliencyStrategy.query_best_content(&content, &storage))
+        );
+        assert_eq!(
+            "b",
+            id(BestSaliencyStrategy.query_best_content(&content, &storage))
+        );
+        assert!(
+            BestSaliencyStrategy
+                .query_best_content(&content[..1], &storage)
+                .is_none()
+        );
 
         // Least recently viewed: b, then c (same complexity, fewer views), then a, then b again
         let mut strategy = BestLeastRecentlyViewedSaliencyStrategy;

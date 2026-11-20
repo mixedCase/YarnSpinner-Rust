@@ -20,7 +20,8 @@ mod state;
 const HAS_ANY_CONTENT_FUNCTION: &str = "has_any_content";
 
 /// Calls a library function. Abstracts over calling with and without a Bevy world.
-pub(crate) type FunctionCaller<'a> = dyn FnMut(&dyn UntypedYarnFn, Vec<YarnValue>) -> YarnValue + 'a;
+pub(crate) type FunctionCaller<'a> =
+    dyn FnMut(&dyn UntypedYarnFn, Vec<YarnValue>) -> YarnValue + 'a;
 
 /// Borrows only the fields an [`EvaluationContext`] needs, so that the stack can be borrowed mutably at the same time.
 macro_rules! context {
@@ -768,8 +769,8 @@ fn evaluate_smart_variable(
                         Some(initial_value) => initial_value.clone().into(),
                         None => evaluate_smart_variable(variable_name, context, function_caller)?
                             .ok_or_else(|| {
-                                error(format!("Failed to fetch any value for {variable_name}"))
-                            })?,
+                            error(format!("Failed to fetch any value for {variable_name}"))
+                        })?,
                     },
                 };
                 stack.push(value.into());

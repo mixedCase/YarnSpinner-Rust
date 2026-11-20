@@ -4,7 +4,6 @@ use crate::prelude::*;
 use antlr4rust::parser_rule_context::ParserRuleContext;
 use antlr4rust::token::Token;
 use antlr4rust::token_stream::TokenStream;
-use std::iter;
 
 pub(crate) trait ParserRuleContextExt<'input>: ParserRuleContext<'input> {
     /// Returns the original text of this [`ParserRuleContext`], including all
@@ -36,66 +35,6 @@ pub(crate) trait ParserRuleContextExt<'input>: ParserRuleContext<'input> {
             token_stream.get_text_from_interval(start, stop)
         }
     }
-
-    fn get_lines_around(
-        &self,
-        token_stream: &ActualTokenStream<'input>,
-        surrounding_lines: usize,
-    ) -> LinesAroundResult {
-        // This seems expensive, but it's only used for error reporting.
-        let whole_file = token_stream.get_all_text();
-        let char_start = self.start().get_start() as usize;
-        let char_stop = self.stop().get_stop() as usize + 1;
-        let byte_start = whole_file
-            .char_indices()
-            .map(|(byte_start, _)| byte_start)
-            .nth(char_start)
-            .unwrap();
-        let byte_stop = whole_file
-            .char_indices()
-            .map(|(byte_start, _)| byte_start)
-            .nth(char_stop)
-            .unwrap();
-        let first_line = self.start().get_line_as_usize().saturating_sub(1);
-
-        let head = &whole_file[..byte_start];
-        let body = &whole_file[byte_start..byte_stop];
-        let tail = &whole_file[byte_stop..];
-
-        let head_lines_to_take = if head.ends_with('\n') || body.starts_with('\n') {
-            surrounding_lines
-        } else {
-            surrounding_lines + 1
-        };
-
-        let head_lines = head.lines().rev().take(head_lines_to_take);
-        let head_lines: Vec<_> = if head.ends_with('\n') {
-            iter::once("").chain(head_lines).collect()
-        } else {
-            head_lines.collect()
-        };
-        let first_line = first_line - head_lines.len().saturating_sub(1);
-        let head = head_lines.into_iter().rev().collect::<Vec<_>>().join("\n");
-
-        let tail_lines_to_take = if body.ends_with('\n') || tail.starts_with('\n') {
-            surrounding_lines
-        } else {
-            surrounding_lines + 1
-        };
-        let tail = tail
-            .lines()
-            .take(tail_lines_to_take)
-            .collect::<Vec<_>>()
-            .join("\n");
-        let lines = head + body + &tail;
-        LinesAroundResult { lines, first_line }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct LinesAroundResult {
-    pub(crate) lines: String,
-    pub(crate) first_line: usize,
 }
 
 impl<'input, T: ?Sized> ParserRuleContextExt<'input> for T where T: ParserRuleContext<'input> {}

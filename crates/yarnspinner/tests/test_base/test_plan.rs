@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 
 /// A test plan: a list of runs, each of which starts the dialogue and describes what is expected to happen.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TestPlan {
     pub runs: Vec<Run>,
 }
@@ -131,11 +131,21 @@ fn tokenize(source: &str) -> Vec<Token> {
                 assert!(end > i, "Syntax error in test plan at: {rest}");
                 tokens.push(Token::Word(chars[i..end].iter().collect()));
                 // The colon after a keyword carries no information
-                i = if chars.get(end) == Some(&':') { end + 1 } else { end };
+                i = if chars.get(end) == Some(&':') {
+                    end + 1
+                } else {
+                    end
+                };
             }
         }
     }
     tokens
+}
+
+impl Default for TestPlan {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TestPlan {
@@ -217,7 +227,11 @@ impl TestPlan {
                     }
                     "set" => {
                         let variable = word(tokens.next());
-                        assert_eq!(Some(Token::Equals), tokens.next(), "Expected '=' after {variable}");
+                        assert_eq!(
+                            Some(Token::Equals),
+                            tokens.next(),
+                            "Expected '=' after {variable}"
+                        );
                         let value = word(tokens.next());
                         match value.parse::<bool>() {
                             Ok(value) => Step::SetBool(variable, value),

@@ -230,7 +230,9 @@ fn run_test_source(file: &std::path::Path) {
             .add_function("add_three_operands", |a: i32, b: i32, c: i32| a + b + c)
             .add_function("set_objective_complete", |_objective: String| true)
             .add_function("is_objective_active", |_objective: String| true)
-            .add_function("get_quest_status", |_quest_name: String| "InProgress".to_owned())
+            .add_function("get_quest_status", |_quest_name: String| {
+                "InProgress".to_owned()
+            })
             .add_function("adds_two", |a: i32| a + 2)
             .add_function("adds_one", |a: i32| a + 1)
             .add_function("adds_all", |a: i32, b: i32, rest: Vec<i32>| {

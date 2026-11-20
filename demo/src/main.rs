@@ -39,7 +39,9 @@ fn main() {
             })
             .set(LogPlugin {
                 level: Level::INFO,
-                filter: "yarnspinner_runtime=debug,yarnspinner_compiler=debug,yarnspinner_core=debug".to_owned(),
+                filter:
+                    "yarnspinner_runtime=debug,yarnspinner_compiler=debug,yarnspinner_core=debug"
+                        .to_owned(),
                 ..default()
             }),
         ManualYarnSpinnerPlugin::with_yarn_source(YarnFileSource::file("dialogue/story.yarn")),
@@ -69,9 +71,11 @@ fn main() {
             .chain()
             .after(ExampleYarnSpinnerDialogueViewSystemSet),
     )
-        .add_observer(|_: On<DialogueCompleted>, mut app_exit_events: MessageWriter<AppExit>| {
+    .add_observer(
+        |_: On<DialogueCompleted>, mut app_exit_events: MessageWriter<AppExit>| {
             app_exit_events.write(AppExit::Success);
-        })
+        },
+    )
     .run();
 }
 

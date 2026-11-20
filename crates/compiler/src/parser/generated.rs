@@ -33,13 +33,14 @@ pub(crate) mod yarnspinnerparserbasevisitor;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use antlr4rust::token::Token;
     use antlr4rust::tree::ParseTree;
     use antlr4rust::{common_token_stream::CommonTokenStream, *};
     use std::ops::Deref;
     use yarnspinnerlexer::*;
     use yarnspinnerparser::*;
 
-    const MINIMAL_INPUT: &str = "title: Minimal Yarn
+    const MINIMAL_INPUT: &str = "title: Minimal_Yarn
 ---
 This is the one and only line
 ===";
@@ -49,7 +50,7 @@ This is the one and only line
         let lexer = YarnSpinnerLexer::new(InputStream::new(MINIMAL_INPUT));
         let mut parser = YarnSpinnerParser::new(CommonTokenStream::new(lexer));
         let dialogue = parser.dialogue().unwrap();
-        let expected_string_tree = "(dialogue (node (header title :  Minimal Yarn) --- (body (statement (line_statement (line_formatted_text T his is the one and only line) \\n))) ===))";
+        let expected_string_tree = "(dialogue (node (title_header title :  Minimal_Yarn \\n) --- (body (statement (line_statement (line_formatted_text T his is the one and only line) \\n))) ===))";
         assert_eq!(
             expected_string_tree,
             dialogue.to_string_tree(parser.deref())
@@ -108,8 +109,8 @@ Wow!
             .get_text();
         assert_eq!(output, "Wow!");
 
-        let title = first_node.header(0);
-        let output = title.unwrap().REST_OF_LINE().unwrap().get_text();
+        let title = first_node.title_header(0).unwrap();
+        let output = title.title.as_ref().unwrap().get_text();
         assert_eq!(output, "Node_Title");
     }
 }

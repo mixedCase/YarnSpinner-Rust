@@ -10,7 +10,6 @@ use antlr4rust::Parser;
 use antlr4rust::common_token_stream::CommonTokenStream;
 use antlr4rust::input_stream::CodePoint32BitCharStream;
 use antlr4rust::token::{TOKEN_DEFAULT_CHANNEL, Token};
-use antlr4rust::tree::{ParseTree, Tree};
 use std::collections::HashSet;
 use std::rc::Rc;
 use yarnspinner_core::prelude::*;
@@ -55,7 +54,7 @@ pub(crate) fn parse_syntax_tree<'a, 'b: 'a>(
         .cloned();
     diagnostics.extend(new_diagnostics);
 
-    FileParseResult::new(file_name, tree, Rc::new(parser))
+    FileParseResult::new(tree, Rc::new(parser))
 }
 
 pub(crate) fn get_comments_channel() -> i32 {

@@ -20,16 +20,20 @@ impl CompiledProgramAnalyser for UnusedVariableChecker {
     fn diagnose(&mut self, program: &Program) {
         // In each node, find all reads and writes to variables
         let new_variables = program.nodes.values().flat_map(|node| {
-            node.instructions
-                .iter()
-                .filter_map(|instruction| match instruction.instruction_type.as_ref() {
-                    Some(InstructionType::PushVariable(PushVariableInstruction { variable_name })) |
-                    Some(InstructionType::StoreVariable(StoreVariableInstruction { variable_name })) => {
-                        Some((instruction.instruction_type.clone().unwrap(), variable_name.clone()))
-                    }
+            node.instructions.iter().filter_map(|instruction| {
+                match instruction.instruction_type.as_ref() {
+                    Some(InstructionType::PushVariable(PushVariableInstruction {
+                        variable_name,
+                    }))
+                    | Some(InstructionType::StoreVariable(StoreVariableInstruction {
+                        variable_name,
+                    })) => Some((
+                        instruction.instruction_type.clone().unwrap(),
+                        variable_name.clone(),
+                    )),
                     _ => None,
-                })
-                .map(|(opcode, operand)| (opcode, operand.try_into().unwrap()))
+                }
+            })
         });
         for (opcode, variable) in new_variables {
             match opcode {

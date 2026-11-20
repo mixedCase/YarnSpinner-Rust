@@ -1,10 +1,6 @@
-use crate::parser_rule_context_ext::ParserRuleContextExt;
-use crate::prelude::*;
 use annotate_snippets::renderer::DecorStyle;
 use annotate_snippets::{AnnotationKind, Level, Renderer, Snippet};
-use antlr4rust::rule_context::CustomRuleContext;
 use antlr4rust::token::Token;
-use antlr4rust::token_factory::TokenFactory;
 use core::fmt;
 use std::fmt::{Display, Formatter};
 use std::ops::Range;
@@ -105,13 +101,18 @@ impl Display for Diagnostic {
             DiagnosticSeverity::Warning => Level::WARNING,
             DiagnosticSeverity::Info => Level::INFO,
         };
-        let report = level.primary_title(label).id(self.code.as_deref().unwrap_or("YS0000")).element(
-            Snippet::source(self.context.as_deref().unwrap_or("<unknown line>"))
-                .line_start(self.start_line + 1)
-                .path(self.file_name.as_deref())
-                .fold(false)
-                .annotation(AnnotationKind::Primary.span(convert_absolute_range_to_relative(self))),
-        );
+        let report = level
+            .primary_title(label)
+            .id(self.code.as_deref().unwrap_or("YS0000"))
+            .element(
+                Snippet::source(self.context.as_deref().unwrap_or("<unknown line>"))
+                    .line_start(self.start_line + 1)
+                    .path(self.file_name.as_deref())
+                    .fold(false)
+                    .annotation(
+                        AnnotationKind::Primary.span(convert_absolute_range_to_relative(self)),
+                    ),
+            );
         // Using `plain` until https://github.com/tokio-rs/tracing/issues/3378 is resolved... bleh
         let renderer = Renderer::plain().decor_style(DecorStyle::Unicode);
         let annotations = renderer.render(&[report]);
@@ -210,15 +211,14 @@ pub(crate) fn token_range(
     stop: &(impl Token + ?Sized),
 ) -> Range<Position> {
     let to_usize = |value: isize| usize::try_from(value).unwrap_or_default();
-    let stop_length = to_usize(stop.get_stop() as isize - stop.get_start() as isize + 1);
+    let stop_length = to_usize(stop.get_stop() - stop.get_start() + 1);
     let start_position = Position {
-        line: to_usize(start.get_line() as isize).saturating_sub(1),
-        character: to_usize(start.get_column() as isize),
+        line: to_usize(start.get_line()).saturating_sub(1),
+        character: to_usize(start.get_column()),
     };
     let stop_position = Position {
-        line: to_usize(stop.get_line() as isize).saturating_sub(1),
-        character: to_usize(stop.get_column() as isize) + stop_length,
+        line: to_usize(stop.get_line()).saturating_sub(1),
+        character: to_usize(stop.get_column()) + stop_length,
     };
     start_position..stop_position
 }
-

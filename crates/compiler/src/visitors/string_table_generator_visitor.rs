@@ -7,7 +7,7 @@ use crate::prelude::*;
 use crate::string_table_manager::StringTableManager;
 use antlr4rust::parser_rule_context::ParserRuleContext;
 use antlr4rust::token::Token;
-use antlr4rust::tree::{ParseTree, ParseTreeVisitorCompat, Tree};
+use antlr4rust::tree::{ParseTreeVisitorCompat, Tree};
 use std::rc::Rc;
 
 /// The prefix of the hashtag that makes a line a shadow of another line.
@@ -39,11 +39,7 @@ impl<'a, 'input> StringTableGeneratorVisitor<'a, 'input> {
         }
     }
 
-    fn add_diagnostic(
-        &mut self,
-        ctx: &impl ParserRuleContext<'input>,
-        description: Diagnostic,
-    ) {
+    fn add_diagnostic(&mut self, ctx: &impl ParserRuleContext<'input>, description: Diagnostic) {
         self.diagnostics
             .push(self.file.diagnostic_at(ctx).described(description));
     }
@@ -124,7 +120,8 @@ impl<'input> YarnSpinnerParserVisitorCompat<'input> for StringTableGeneratorVisi
             let description = || descriptors::DUPLICATE_LINE_ID.create(&[&line_id.0]);
             let existing_position = existing.position.clone();
             self.add_diagnostic(line_id_tag.unwrap().as_ref(), description());
-            self.diagnostics.push(existing_position.described(description()));
+            self.diagnostics
+                .push(existing_position.described(description()));
             return;
         }
 
@@ -135,7 +132,11 @@ impl<'input> YarnSpinnerParserVisitorCompat<'input> for StringTableGeneratorVisi
         }
 
         let shadow_line_id: Option<LineId> = shadow_ids.first().map(|tag| {
-            format!("{LINE_ID_PREFIX}{}", &text_of(tag)[SHADOW_ID_PREFIX.len()..]).into()
+            format!(
+                "{LINE_ID_PREFIX}{}",
+                &text_of(tag)[SHADOW_ID_PREFIX.len()..]
+            )
+            .into()
         });
 
         let position = match line_id_tag {

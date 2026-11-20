@@ -6,9 +6,9 @@
 use crate::Result;
 use crate::annotations::*;
 use crate::diagnostic_descriptors as descriptors;
+use crate::listeners::token_range;
 use crate::prelude::generated::yarnspinnerparser::*;
 use crate::prelude::generated::yarnspinnerparserlistener::YarnSpinnerParserListener;
-use crate::listeners::token_range;
 use crate::prelude::*;
 use crate::string_table_manager::StringTableManager;
 use crate::type_checker::*;
@@ -23,6 +23,9 @@ use yarnspinner_core::types::FunctionType;
 
 /// The language version from which on the features introduced by Yarn Spinner 3 are available.
 const VERSION_WITH_YARN_SPINNER_3_FEATURES: u32 = 3;
+
+/// A node of one of the files that are being compiled.
+type NodeInFile<'a, 'input> = (&'a SourceFile<'input>, Rc<NodeContextAll<'input>>);
 
 /// Compile Yarn code, as specified by a compilation job.
 pub(crate) fn compile(compiler: &Compiler) -> Result<Compilation> {
@@ -101,17 +104,25 @@ fn compile_files<'input>(
             parsed: parse_syntax_tree(file, chars, &mut diagnostics),
         })
         .collect();
-    let all_nodes: Vec<(&SourceFile<'input>, Rc<NodeContextAll<'input>>)> = files
+    let all_nodes: Vec<NodeInFile<'_, 'input>> = files
         .iter()
-        .flat_map(|file| file.parsed.tree.node_all().into_iter().map(move |node| (file, node)))
+        .flat_map(|file| {
+            file.parsed
+                .tree
+                .node_all()
+                .into_iter()
+                .map(move |node| (file, node))
+        })
         .collect();
 
     // Give every node the title from its title header. Members of node groups get a unique title later.
     for (file, node) in &all_nodes {
-        let title = node
-            .title_header_all()
-            .first()
-            .and_then(|header| header.title.as_ref().map(|t| t.get_text().trim().to_owned()));
+        let title = node.title_header_all().first().and_then(|header| {
+            header
+                .title
+                .as_ref()
+                .map(|t| t.get_text().trim().to_owned())
+        });
         state.annotations.nodes.insert(
             file.key(node.as_ref()),
             NodeAnnotation {
@@ -178,8 +189,9 @@ fn compile_files<'input>(
     let mut metadata = NodeMetadataListener::default();
     for file in &files {
         metadata.file = Some(file.clone());
-        metadata = *YarnSpinnerParserTreeWalker::walk(Box::new(metadata), file.parsed.tree.as_ref())
-            .expect("Internal error: tree walk failed");
+        metadata =
+            *YarnSpinnerParserTreeWalker::walk(Box::new(metadata), file.parsed.tree.as_ref())
+                .expect("Internal error: tree walk failed");
     }
     for (destination, position) in &metadata.jumps {
         if !metadata.node_titles.contains(destination) {
@@ -321,7 +333,9 @@ fn compile_files<'input>(
     // Apply the solution to all declarations
     for declaration in state.declarations.iter_mut() {
         declaration.ty = declaration.ty.substitute(&state.solution);
-        if declaration.is_implicit && !declaration.ty.is_var() && declaration.default_value.is_none()
+        if declaration.is_implicit
+            && !declaration.ty.is_var()
+            && declaration.default_value.is_none()
         {
             // Implicit declarations start out with the default value of their type
             declaration.default_value = declaration.ty.default_value();
@@ -354,11 +368,9 @@ fn compile_files<'input>(
                     expression.get_text_with_whitespace(files[*file].parsed.tokens())
                 })
                 .unwrap_or_else(|| "(unknown)".to_owned());
-            diagnostics.push(
-                position.clone().described(
-                    descriptors::SMART_VARIABLE_READ_ONLY.create(&[variable_name, &expression]),
-                ),
-            );
+            diagnostics.push(position.clone().described(
+                descriptors::SMART_VARIABLE_READ_ONLY.create(&[variable_name, &expression]),
+            ));
         }
     }
 
@@ -369,7 +381,10 @@ fn compile_files<'input>(
     // Empty nodes are not compiled
     let mut empty_nodes = HashSet::new();
     for (file, node) in &all_nodes {
-        if node.body().is_some_and(|body| body.statement_all().is_empty()) {
+        if node
+            .body()
+            .is_some_and(|body| body.statement_all().is_empty())
+        {
             let title = state.annotations.node(file.index, node.as_ref()).title;
             diagnostics.push(file.diagnostic_at(node.as_ref()).described(
                 descriptors::EMPTY_NODE.create(&[title.as_deref().unwrap_or("(missing title)")]),
@@ -493,10 +508,12 @@ fn compile_files<'input>(
     }
 
     // Each node group gets a 'hub' node that selects the member to run
-    let mut node_groups: Vec<(String, Vec<&(&SourceFile<'input>, Rc<NodeContextAll<'input>>)>)> =
-        Vec::new();
+    let mut node_groups: Vec<(String, Vec<&NodeInFile<'_, 'input>>)> = Vec::new();
     for entry in &all_nodes {
-        let Some(node_group) = state.annotations.node(entry.0.index, entry.1.as_ref()).node_group
+        let Some(node_group) = state
+            .annotations
+            .node(entry.0.index, entry.1.as_ref())
+            .node_group
         else {
             continue;
         };
@@ -506,14 +523,22 @@ fn compile_files<'input>(
         }
     }
     for (node_group, members) in node_groups {
-        compile_node_group(&context, &node_group, &members, &tracking_nodes, &mut compiled_nodes);
+        compile_node_group(
+            &context,
+            &node_group,
+            &members,
+            &tracking_nodes,
+            &mut compiled_nodes,
+        );
     }
 
     // Store the initial values of all variables in the program
     let mut initial_values = HashMap::new();
     for declaration in state.declarations.iter() {
         // Functions and smart variables have no stored value
-        if !declaration.is_variable() || declaration.is_inline_expansion || declaration.ty == Ty::Error
+        if !declaration.is_variable()
+            || declaration.is_inline_expansion
+            || declaration.ty == Ty::Error
         {
             continue;
         }
@@ -545,7 +570,9 @@ fn compile_files<'input>(
     let mut debug_info = HashMap::new();
     for emitter in compiled_nodes {
         debug_info.insert(emitter.node.name.clone(), emitter.debug_info);
-        program.nodes.insert(emitter.node.name.clone(), emitter.node);
+        program
+            .nodes
+            .insert(emitter.node.name.clone(), emitter.node);
     }
 
     let compilation = Compilation {
@@ -582,7 +609,15 @@ fn engine_provided_function_declarations() -> Vec<Declaration> {
 
 /// The trimmed value of the first header with this key (ignoring case) that has a value.
 fn get_header_value<'input>(node: &NodeContextAll<'input>, key: &str) -> Option<String> {
-    get_header(node, key).map(|header| header.header_value.as_ref().unwrap().get_text().trim().to_owned())
+    get_header(node, key).map(|header| {
+        header
+            .header_value
+            .as_ref()
+            .unwrap()
+            .get_text()
+            .trim()
+            .to_owned()
+    })
 }
 
 fn get_header<'input>(
@@ -612,9 +647,11 @@ fn add_diagnostics_for_shadow_lines(
         let Some(source) = string_table.get(&source_line_id).cloned() else {
             // No source line found for this shadow line, so we can't keep processing this line.
             let id = &source_line_id.0;
-            diagnostics.push(shadow.position.described(
-                descriptors::UNKNOWN_LINE_ID_FOR_SHADOW_LINE.create(&[id]),
-            ));
+            diagnostics.push(
+                shadow
+                    .position
+                    .described(descriptors::UNKNOWN_LINE_ID_FOR_SHADOW_LINE.create(&[id])),
+            );
             continue;
         };
         if source.has_expressions {
@@ -628,9 +665,11 @@ fn add_diagnostics_for_shadow_lines(
         }
         if source.info.text != shadow.info.text {
             // Lines must be identical
-            diagnostics.push(shadow.position.described(
-                descriptors::SHADOW_LINES_MUST_HAVE_SAME_TEXT_AS_SOURCE.create(&[]),
-            ));
+            diagnostics.push(
+                shadow
+                    .position
+                    .described(descriptors::SHADOW_LINES_MUST_HAVE_SAME_TEXT_AS_SOURCE.create(&[])),
+            );
         }
         // ## Implementation note
         // The original removes the text of the shadow line. We keep a copy of the source text, see `StringInfo::shadow_line_id`.
@@ -639,13 +678,12 @@ fn add_diagnostics_for_shadow_lines(
 }
 
 fn add_errors_for_invalid_node_names<'input>(
-    all_nodes: &[(&SourceFile<'input>, Rc<NodeContextAll<'input>>)],
+    all_nodes: &[NodeInFile<'_, 'input>],
     annotations: &Annotations,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Group the nodes by title, keeping the order in which the titles first appear
-    let mut nodes_by_title: Vec<(String, Vec<&(&SourceFile<'input>, Rc<NodeContextAll<'input>>)>)> =
-        Vec::new();
+    let mut nodes_by_title: Vec<(String, Vec<&NodeInFile<'_, 'input>>)> = Vec::new();
     for entry in all_nodes {
         let Some(title) = annotations.node(entry.0.index, entry.1.as_ref()).title else {
             continue;
@@ -686,9 +724,11 @@ fn add_errors_for_invalid_node_names<'input>(
                             Some(header) => file.diagnostic_at(header.as_ref()),
                             None => file.diagnostic_at(node.as_ref()),
                         };
-                        diagnostics.push(position.described(
-                            descriptors::DUPLICATE_SUBTITLE.create(&[title, subtitle]),
-                        ));
+                        diagnostics.push(
+                            position.described(
+                                descriptors::DUPLICATE_SUBTITLE.create(&[title, subtitle]),
+                            ),
+                        );
                     }
                 }
             }
@@ -728,7 +768,8 @@ fn add_errors_for_invalid_node_names<'input>(
             let subtitle = token.get_text().trim().to_owned();
             if let Some(invalid) = invalid_title_characters.find(&subtitle) {
                 let line = token.get_line_as_usize().saturating_sub(1);
-                let character = token.get_column_as_usize() + subtitle[..invalid.start()].chars().count();
+                let character =
+                    token.get_column_as_usize() + subtitle[..invalid.start()].chars().count();
                 let range = Position { line, character }..Position {
                     line,
                     character: character + 1,
@@ -765,7 +806,10 @@ impl<'input> NodeMetadataListener<'input> {
     }
 }
 
-impl<'input> ParseTreeListener<'input, YarnSpinnerParserContextType> for NodeMetadataListener<'input> {}
+impl<'input> ParseTreeListener<'input, YarnSpinnerParserContextType>
+    for NodeMetadataListener<'input>
+{
+}
 
 #[allow(non_snake_case)]
 impl<'input> YarnSpinnerParserListener<'input> for NodeMetadataListener<'input> {
@@ -879,7 +923,10 @@ fn resolve_initial_values(declarations: &mut Declarations, diagnostics: &mut Vec
                     declaration.default_value = Some(case.value.clone());
                     continue;
                 }
-                None => format!("{} doesn't have a member named {member_name}", enum_type.name),
+                None => format!(
+                    "{} doesn't have a member named {member_name}",
+                    enum_type.name
+                ),
             },
             // The value was converted to the raw type of the enum by an explicit type, e.g. `as string`
             _ => format!("Can't determine the type of {}", expression.get_text()),
@@ -900,7 +947,10 @@ fn resolve_initial_values(declarations: &mut Declarations, diagnostics: &mut Vec
             (declaration.name.clone(), expression)
         })
         .collect();
-    for declaration in declarations.iter().filter(|declaration| declaration.is_inline_expansion) {
+    for declaration in declarations
+        .iter()
+        .filter(|declaration| declaration.is_inline_expansion)
+    {
         let mut visited = HashSet::new();
         let mut stack = vec![declaration.name.clone()];
         let mut loops_through = None;
@@ -948,12 +998,12 @@ fn add_diagnostics_for_unavailable_features<'input>(
     }
     impl<'input> FeatureListener<'input> {
         fn add_error(&mut self, ctx: &impl ParserRuleContext<'input>, feature: &str) {
-            self.diagnostics.push(self.file.diagnostic_at(ctx).described(
-                descriptors::LANGUAGE_VERSION_TOO_LOW.create(&[&unavailable_feature_message(
-                    feature,
-                    self.language_version,
-                )]),
-            ));
+            self.diagnostics.push(
+                self.file.diagnostic_at(ctx).described(
+                    descriptors::LANGUAGE_VERSION_TOO_LOW
+                        .create(&[&unavailable_feature_message(feature, self.language_version)]),
+                ),
+            );
         }
     }
     impl<'input> ParseTreeListener<'input, YarnSpinnerParserContextType> for FeatureListener<'input> {}
@@ -1022,7 +1072,7 @@ fn compile_smart_variable<'input>(
 fn compile_node_group<'input>(
     context: &CodeGenerationContext<'_, 'input>,
     node_group_name: &str,
-    members: &[&(&SourceFile<'input>, Rc<NodeContextAll<'input>>)],
+    members: &[&NodeInFile<'_, 'input>],
     tracking_nodes: &HashSet<String>,
     compiled_nodes: &mut Vec<NodeEmitter>,
 ) {
@@ -1047,7 +1097,10 @@ fn compile_node_group<'input>(
         let Some(title) = title_of(file, node) else {
             continue;
         };
-        if !compiled_nodes.iter().any(|compiled| compiled.node.name == title) {
+        if !compiled_nodes
+            .iter()
+            .any(|compiled| compiled.node.name == title)
+        {
             // The node wasn't compiled (it's empty), so it can't be run
             continue;
         }
@@ -1134,7 +1187,11 @@ fn compile_node_group<'input>(
     let runnable_members: Vec<_> = members
         .iter()
         .filter_map(|(file, node)| Some((node, title_of(file, node)?)))
-        .filter(|(_, title)| compiled_nodes.iter().any(|compiled| compiled.node.name == *title))
+        .filter(|(_, title)| {
+            compiled_nodes
+                .iter()
+                .any(|compiled| compiled.node.name == *title)
+        })
         .collect();
 
     let add_candidate_instructions: Vec<usize> = runnable_members

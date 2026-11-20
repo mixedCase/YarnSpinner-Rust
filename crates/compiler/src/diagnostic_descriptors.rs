@@ -304,11 +304,12 @@ pub(crate) const SHADOW_LINES_CANT_HAVE_EXPRESSIONS: DiagnosticDescriptor = Diag
 };
 
 /// Shadow line contains different text than its source
-pub(crate) const SHADOW_LINES_MUST_HAVE_SAME_TEXT_AS_SOURCE: DiagnosticDescriptor = DiagnosticDescriptor {
-    code: "YS0044",
-    template: "Shadow lines must have the same text as their source",
-    severity: DiagnosticSeverity::Error,
-};
+pub(crate) const SHADOW_LINES_MUST_HAVE_SAME_TEXT_AS_SOURCE: DiagnosticDescriptor =
+    DiagnosticDescriptor {
+        code: "YS0044",
+        template: "Shadow lines must have the same text as their source",
+        severity: DiagnosticSeverity::Error,
+    };
 
 /// Smart variable creates a reference loop
 pub(crate) const SMART_VARIABLE_LOOP: DiagnosticDescriptor = DiagnosticDescriptor {
@@ -381,11 +382,12 @@ pub(crate) const WRONG_COMMAND_PARAMETER_COUNT: DiagnosticDescriptor = Diagnosti
 };
 
 /// Dialogue has multiple '#line' or '#shadow' IDs.
-pub(crate) const MULTIPLE_LINE_OR_SHADOW_IDS_ON_A_LINE: DiagnosticDescriptor = DiagnosticDescriptor {
-    code: "YS0062",
-    template: "Dialogue has multiple '#line' or '#shadow' IDs.",
-    severity: DiagnosticSeverity::Error,
-};
+pub(crate) const MULTIPLE_LINE_OR_SHADOW_IDS_ON_A_LINE: DiagnosticDescriptor =
+    DiagnosticDescriptor {
+        code: "YS0062",
+        template: "Dialogue has multiple '#line' or '#shadow' IDs.",
+        severity: DiagnosticSeverity::Error,
+    };
 
 /// Dialogue has malformed or invalid markup.
 pub(crate) const MARKUP_FAILED_TO_PARSE: DiagnosticDescriptor = DiagnosticDescriptor {
@@ -402,9 +404,9 @@ pub(crate) const ROGUE_CHEVRON_WITH_COMMAND: DiagnosticDescriptor = DiagnosticDe
 };
 
 /// Use of undeclared functions is deprecated
-pub(crate) const USE_OF_UNDECLARED_FUNCTIONS_IN_V4_IS_DEPRECATED: DiagnosticDescriptor = DiagnosticDescriptor {
-    code: "YS0065",
-    template: "Function {0} is unknown. You should declare it in your game so that the Yarn Spinner compiler is aware of it. This will become an error in future versions.",
-    severity: DiagnosticSeverity::Warning,
-};
-
+pub(crate) const USE_OF_UNDECLARED_FUNCTIONS_IN_V4_IS_DEPRECATED: DiagnosticDescriptor =
+    DiagnosticDescriptor {
+        code: "YS0065",
+        template: "Function {0} is unknown. You should declare it in your game so that the Yarn Spinner compiler is aware of it. This will become an error in future versions.",
+        severity: DiagnosticSeverity::Warning,
+    };
