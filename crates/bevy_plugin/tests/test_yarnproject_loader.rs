@@ -37,7 +37,7 @@ fn check_project(
     let project = projects.get(&handle.0).unwrap().project();
     cmd_assert!(
         commands,
-        project.project_file_version == CURRENT_PROJECT_FILE_VERSION,
+        project.project_file_version <= CURRENT_PROJECT_FILE_VERSION,
         "Wrong project file version"
     );
     cmd_assert!(

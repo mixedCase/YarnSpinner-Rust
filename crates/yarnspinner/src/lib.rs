@@ -23,13 +23,20 @@ pub mod prelude {
         Language, Line as YarnLine, MarkupAttribute, MarkupValue, OptionId,
         Result as YarnRuntimeResult, StringTable, TextProvider, VariableStorage,
     };
+    pub use crate::runtime::{
+        BestLeastRecentlyViewedSaliencyStrategy, BestSaliencyStrategy, ContentSaliencyContentType,
+        ContentSaliencyOption, ContentSaliencyStrategy, FirstSaliencyStrategy,
+        RandomBestLeastRecentlyViewedSaliencyStrategy,
+    };
 }
 
 pub mod core {
     //! Core types and traits that are used by both the compiler and runtime.
+    pub use yarnspinner_core::types::{EnumCase, EnumType, FunctionType};
     pub use yarnspinner_core::prelude::{
         CompiledFile, Header, Instruction, IntoYarnValueFromNonYarnValue, InvalidOpCodeError,
-        Library, LineId, MetadataLine, Node, Position, Program, Type, UntypedYarnFn, YarnFn,
+        Library, LineId, MetadataLine, Node, Position, Program, Type, UntypedYarnFn, VariableKind,
+        YarnFn,
         YarnFnParam, YarnFnParamItem, YarnValue, YarnValueCastError, YarnValueWrapper,
         YarnValueWrapperIter, YscLine, YscLines, YscMetadata, optionality, yarn_fn_type,
         yarn_library,

@@ -11,7 +11,7 @@ use bevy::{
     prelude::*,
     tasks::futures_lite::StreamExt,
 };
-use yarnspinner::compiler::{CURRENT_PROJECT_FILE_VERSION, Project};
+use yarnspinner::compiler::{CURRENT_PROJECT_FILE_VERSION, MINIMUM_PROJECT_FILE_VERSION, Project};
 
 /// A .yarnproject file.
 #[derive(Debug, Clone, PartialEq, Reflect, Asset)]
@@ -60,8 +60,10 @@ impl AssetLoader for YarnProjectFileLoader {
         reader.read_to_end(&mut bytes).await?;
         let project: Project = serde_json::from_slice(&bytes)?;
         ensure!(
-            project.project_file_version == CURRENT_PROJECT_FILE_VERSION,
-            "Project file version must be {}",
+            (MINIMUM_PROJECT_FILE_VERSION..=CURRENT_PROJECT_FILE_VERSION)
+                .contains(&project.project_file_version),
+            "Project file version must be between {} and {}",
+            MINIMUM_PROJECT_FILE_VERSION,
             CURRENT_PROJECT_FILE_VERSION
         );
         let asset_path = load_context.path().clone();

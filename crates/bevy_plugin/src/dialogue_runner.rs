@@ -204,6 +204,75 @@ impl DialogueRunner {
         self.inner().0.get_tags_for_node(node_name)
     }
 
+    /// Returns the trimmed value of the header `header_name` of the node `node_name`,
+    /// or [`None`] if the node or the header doesn't exist.
+    #[must_use]
+    pub fn get_header_value(&self, node_name: &str, header_name: &str) -> Option<String> {
+        self.inner().0.get_header_value(node_name, header_name)
+    }
+
+    /// Returns whether `node_name` is a node group: multiple nodes that share this title and have `when:` headers.
+    /// Starting a node group runs the member chosen by the [`ContentSaliencyStrategy`].
+    #[must_use]
+    pub fn is_node_group(&self, node_name: &str) -> bool {
+        self.inner().0.is_node_group(node_name)
+    }
+
+    /// Returns the strategy that decides which item of a line group or which member of a node group runs.
+    #[must_use]
+    pub fn content_saliency_strategy(&self) -> &dyn ContentSaliencyStrategy {
+        self.inner().0.content_saliency_strategy()
+    }
+
+    /// Sets the strategy that decides which item of a line group or which member of a node group runs.
+    /// See also [`DialogueRunnerBuilder::with_content_saliency_strategy`].
+    pub fn set_content_saliency_strategy(
+        &mut self,
+        strategy: impl ContentSaliencyStrategy + 'static,
+    ) -> &mut Self {
+        self.inner_mut()
+            .0
+            .set_content_saliency_strategy(Box::new(strategy));
+        self
+    }
+
+    /// Returns whether starting `node_name` would show any content: always for a plain node,
+    /// and for a node group if one of its members can currently run.
+    /// Needs the [`World`] because the conditions of the members may call functions that are Bevy systems.
+    pub fn has_any_content(&self, node_name: &str, world: &mut World) -> Result<bool> {
+        self.inner()
+            .0
+            .has_any_content_with_world(node_name, world)
+            .map_err(Error::from)
+    }
+
+    /// Evaluates the smart variable `name` and returns its current value, or `None` if no smart variable of this name exists.
+    /// Needs the [`World`] because the expression may call functions that are Bevy systems.
+    pub fn get_smart_variable(&self, name: &str, world: &mut World) -> Result<Option<YarnValue>> {
+        self.inner()
+            .0
+            .get_smart_variable_with_world(name, world)
+            .map_err(Error::from)
+    }
+
+    /// If the dialogue is currently waiting for the user to select an option, this method signals that none was selected,
+    /// for example because none of them is available. The dialogue then continues with the content after the options.
+    /// Implies [`DialogueRunner::continue_in_next_update`].
+    pub fn select_no_option(&mut self) -> Result<&mut Self> {
+        if !self.is_running {
+            bail!(
+                "Can't skip the options: the dialogue is currently not running. Please call `DialogueRunner::select_no_option()` only after receiving a `PresentOptions` event."
+            )
+        }
+        self.inner_mut()
+            .0
+            .set_no_option_selected()
+            .map_err(Error::from)?;
+        self.last_selected_option = None;
+        self.continue_in_next_update();
+        Ok(self)
+    }
+
     /// Gets a value indicating whether a specified node exists in the Yarn files.
     #[must_use]
     pub fn node_exists(&self, node_name: &str) -> bool {

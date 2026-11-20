@@ -21,6 +21,7 @@ pub struct DialogueRunnerBuilder {
     compilation: CompiledFile,
     localizations: Option<Localizations>,
     asset_server: SkipDebug<AssetServer>,
+    content_saliency_strategy: Option<Box<dyn ContentSaliencyStrategy>>,
 }
 
 impl DialogueRunnerBuilder {
@@ -37,7 +38,22 @@ impl DialogueRunnerBuilder {
             compilation: yarn_project.compiled_file().clone(),
             localizations: yarn_project.localizations().cloned(),
             asset_server: yarn_project.asset_server.clone(),
+            content_saliency_strategy: None,
         }
+    }
+
+    /// Sets the [`ContentSaliencyStrategy`] used by the [`DialogueRunner`]: the strategy that decides which item
+    /// of a line group (`=>`) or which member of a node group (nodes with `when:` headers) runs.
+    /// By default, this is a [`RandomBestLeastRecentlyViewedSaliencyStrategy`].
+    /// The other built-in strategies are [`FirstSaliencyStrategy`], [`BestSaliencyStrategy`]
+    /// and [`BestLeastRecentlyViewedSaliencyStrategy`].
+    #[must_use]
+    pub fn with_content_saliency_strategy(
+        mut self,
+        strategy: impl ContentSaliencyStrategy + 'static,
+    ) -> Self {
+        self.content_saliency_strategy = Some(Box::new(strategy));
+        self
     }
 
     /// Replaces the [`VariableStorage`] used by the [`DialogueRunner`]. By default, this is a [`MemoryVariableStorage`].
@@ -79,6 +95,9 @@ impl DialogueRunnerBuilder {
             .library_mut()
             .extend(self.library);
         dialogue.add_program(self.compilation.program);
+        if let Some(strategy) = self.content_saliency_strategy {
+            dialogue.set_content_saliency_strategy(strategy);
+        }
 
         for asset_provider in self.asset_providers.values_mut() {
             if let Some(ref localizations) = self.localizations {

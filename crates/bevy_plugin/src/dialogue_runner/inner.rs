@@ -21,6 +21,11 @@ impl InnerDialogue<'_> {
 
     /// Proxy for [`Dialogue::get_line_id_for_node`].
     #[must_use]
+    #[deprecated(
+        since = "0.11.0",
+        note = "Yarn Spinner 3 has no raw text nodes anymore, so no line with this ID exists."
+    )]
+    #[allow(deprecated)]
     pub fn get_line_id_for_node(&self, node_name: &str) -> Option<LineId> {
         self.0.get_line_id_for_node(node_name)
     }
@@ -41,6 +46,11 @@ impl InnerDialogueMut<'_> {
 
     /// Proxy for [`Dialogue::get_line_id_for_node`]
     #[must_use]
+    #[deprecated(
+        since = "0.11.0",
+        note = "Yarn Spinner 3 has no raw text nodes anymore, so no line with this ID exists."
+    )]
+    #[allow(deprecated)]
     pub fn get_line_id_for_node(&self, node_name: &str) -> Option<LineId> {
         self.0.get_line_id_for_node(node_name)
     }
