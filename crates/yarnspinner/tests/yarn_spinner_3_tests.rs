@@ -223,6 +223,8 @@ Plain
 fn test_node_groups_can_be_queried() {
     let result = Compiler::from_source(NODE_GROUP_SOURCE).compile().unwrap();
     let test_base = TestBase::new().with_compilation(result);
+    // Only mutated in the part that needs the variant of the API without a Bevy world
+    #[cfg_attr(feature = "bevy", allow(unused_mut))]
     let mut dialogue = test_base.dialogue;
 
     assert!(dialogue.is_node_group("Guard"));
